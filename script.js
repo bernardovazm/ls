@@ -48,7 +48,7 @@ new Vue({
       setInterval(async () => {
         await this.sendDataToBackend();
         await this.receiveDataFromBackend();
-      }, 1000);
+      }, 10000);
     },
     async sendDataToBackend() {
       const payload = {
@@ -57,14 +57,16 @@ new Vue({
         trackedUserIDs: this.trackedUserIDs,
       };
 
-      await fetch("/api/relayData.php", {
+      await fetch("https://ls-lilac.vercel.app/api/relayData.php", {
         method: "POST",
         body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
       });
     },
     async receiveDataFromBackend() {
-      const response = await fetch("/api/relayData.php");
+      const response = await fetch(
+        "https://ls-lilac.vercel.app/api/relayData.php"
+      );
       const data = await response.json();
 
       data.trackedUserIDs.forEach((userID) => {
