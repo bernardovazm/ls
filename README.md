@@ -1,8 +1,7 @@
 # LS
 
-Este projeto demonstra a comunicação `localStorage` para `localStorage` entre usuários, utilizando Vue.js no frontend e PHP no backend.
+This project utilizes PHP, localStorage and Vue.js.
 
-## Licença
+## License
 
-Este projeto é distribuído sob a licença MIT.
-# ls
+This project is distributed using MIT license.
