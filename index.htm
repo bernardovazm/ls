@@ -12,38 +12,29 @@
       href="https://icon-icons.com/downloadimage.php?id=255918&root=4026/ICO/32/&file=loading_icon_255918.ico"
     />
     <link rel="stylesheet" href="style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
   </head>
   <body>
     <main>
-      <div id="app">
-        <h1 class="logo">LS</h1>
-        <div>
-          <h2>Seu ID: {{ userID }}</h2>
-        </div>
-        <div>
-          <label for="description">Sua Descrição:</label>
-          <input
-            type="text"
-            v-model="userDescription"
-            @input="setUserDescription"
-          />
-        </div>
-        <div>
-          <label for="otherUserID">ID de Outro Usuário:</label>
-          <input type="text" v-model="otherUserID" />
-        </div>
-        <button @click="addOtherUserID">ADICIONAR</button>
-        <div>
-          <h2>Descrições dos Usuários:</h2>
-          <ul>
-            <li v-for="(desc, id) in trackedUsersDescriptions" :key="id">
-              <strong>{{ id }}:</strong> {{ desc }}
-            </li>
-          </ul>
-        </div>
+      <h1 class="logo">LS</h1>
+      <div>
+        <h2 id="yourPeerId">Your ID:</h2>
       </div>
+      <div>
+        <label for="peerIdInput">Other user ID:</label>
+        <input type="text" id="peerIdInput" placeholder="Type other user ID" />
+      </div>
+      <div>
+        <label for="messageInput">Message:</label>
+        <input type="text" id="messageInput" placeholder="Type your message" />
+      </div>
+      <button id="sendButton">SEND</button>
+      <h2>Received messages:</h2>
+      <ul>
+        <div id="receivedMessages"></div>
+      </ul>
     </main>
+
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
