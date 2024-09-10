@@ -1,78 +1,39 @@
-new Vue({
-  el: "#app",
-  data: {
-    userID: "",
-    userDescription: "",
-    otherUserID: "",
-    trackedUserIDs: [],
-    trackedUsersDescriptions: {},
-  },
-  created() {
-    this.initializeUser();
-    this.loadTrackedUsers();
-    this.startRelay();
-  },
-  methods: {
-    initializeUser() {
-      if (!localStorage.getItem("userID")) {
-        const userID = Math.floor(Math.random() * 1000000);
-        localStorage.setItem("userID", userID);
-      }
-      this.userID = localStorage.getItem("userID");
-      this.userDescription = localStorage.getItem("userDescription") || "";
-    },
-    setUserDescription() {
-      localStorage.setItem("userDescription", this.userDescription);
-    },
-    addOtherUserID() {
-      if (this.otherUserID && !this.trackedUserIDs.includes(this.otherUserID)) {
-        this.trackedUserIDs.push(this.otherUserID);
-        localStorage.setItem(
-          "trackedUserIDs",
-          JSON.stringify(this.trackedUserIDs)
-        );
-        this.trackedUsersDescriptions[this.otherUserID] = "Carregando...";
-        this.otherUserID = "";
-        this.loadTrackedUsers();
-      }
-    },
-    loadTrackedUsers() {
-      this.trackedUserIDs =
-        JSON.parse(localStorage.getItem("trackedUserIDs")) || [];
-      this.trackedUserIDs.forEach((id) => {
-        this.trackedUsersDescriptions[id] =
-          localStorage.getItem(`description_${id}`) || "Nenhuma descrição";
-      });
-    },
-    async startRelay() {
-      setInterval(async () => {
-        await this.sendDataToBackend();
-        await this.receiveDataFromBackend();
-      }, 10000);
-    },
-    async sendDataToBackend() {
-      const payload = {
-        userID: this.userID,
-        description: this.userDescription,
-        trackedUserIDs: this.trackedUserIDs,
-      };
+const peer = new Peer();
+let conn;
 
-      await fetch("/api/relayData.php", {
-        method: "POST",
-        body: JSON.stringify(payload),
-        headers: { "Content-Type": "application/json" },
-      });
-    },
-    async receiveDataFromBackend() {
-      const response = await fetch("/api/relayData.php");
-      const data = await response.json();
+peer.on("open", (id) => {
+  document.getElementById("yourPeerId").innerText = `Your ID: ${id}`;
+});
 
-      data.trackedUserIDs.forEach((userID) => {
-        if (userID !== data.userID) {
-          this.trackedUsersDescriptions[userID] = data.description;
-          localStorage.setItem(`description_${userID}`, data.description);
-        }
-      });
-    },
-  },
+document.getElementById("sendButton").addEventListener("click", () => {
+  const peerId = document.getElementById("peerIdInput").value;
+  const message = document.getElementById("messageInput").value;
+  if (!conn) {
+    conn = peer.connect(peerId);
+    setupConnection();
+  }
+  if (message) {
+    conn.send(message);
+    displayMessage("You: ", message);
+    document.getElementById("messageInput").value = "";
+  }
+});
+
+function setupConnection() {
+  conn.on("open", () => {
+    console.log("P2P connection established successfully.");
+  });
+  conn.on("data", (data) => {
+    displayMessage("Other user: ", data);
+  });
+}
+
+function displayMessage(sender, message) {
+  const receivedMessages = document.getElementById("receivedMessages");
+  receivedMessages.innerHTML += `<li><strong>${sender}:</strong> ${message}</li>`;
+}
+
+peer.on("connection", (incomingConn) => {
+  conn = incomingConn;
+  setupConnection();
 });
