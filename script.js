@@ -1,12 +1,38 @@
-const peer = new Peer();
+let peer;
+let max = 10;
 let conn;
 let currentDate;
+
+async function createPeer() {
+  while (!peer) {
+    try {
+      const randomPeer = generateRandomId();
+      peer = new Peer(randomPeer);
+      await new Promise((resolve, reject) => {
+        peer.on("open", resolve);
+        peer.on("error", reject);
+      });
+    } catch (error) {
+      console.error("Erro ao criar peer:", error);
+    }
+  }
+}
+
+createPeer();
+
+function generateRandomId(max = 10) {
+  return JSON.stringify(Math.floor(Math.random() * max));
+}
 
 peer.on("open", (id) => {
   document.getElementById("yourPeerId").innerText = `Your ID: ${id}`;
 });
 
-document.getElementById("sendButton").addEventListener("click", () => {
+window.onload = () => {
+  loadMessages();
+};
+
+const sendMessage = () => {
   const peerId = document.getElementById("peerIdInput").value;
   const message = document.getElementById("messageInput").value;
   if (!conn) {
@@ -18,14 +44,25 @@ document.getElementById("sendButton").addEventListener("click", () => {
     displayMessage("You", message);
     document.getElementById("messageInput").value = "";
   }
-});
+};
+
+document.getElementById("sendButton").addEventListener("click", sendMessage);
+
+document
+  .getElementById("messageInput")
+  .addEventListener("keypress", (event) => {
+    if (event.key === "Enter") {
+      document.getElementById("sendButton").click();
+      event.preventDefault();
+    }
+  });
 
 function setupConnection(otherUser) {
   conn.on("open", () => {
     console.log("P2P connection established successfully.");
   });
   conn.on("data", (data) => {
-    displayMessage(otherUser, data);
+    displayMessage(otherUser ?? conn.peer, data);
   });
 }
 
@@ -34,14 +71,46 @@ function displayMessage(sender, message) {
   if (receivedMessages.innerHTML == "No messages :(") {
     receivedMessages.innerHTML = "";
   }
-  if (new Date().toLocaleDateString() !== currentDate) {
-    receivedMessages.innerHTML += `<p>${new Date().toLocaleDateString()}</p>`;
-  }
-  currentDate = new Date().toLocaleDateString();
-  receivedMessages.innerHTML += `<li><small>[${new Date().toLocaleTimeString(
-    "en-GB",
-    { hour: "numeric", minute: "numeric" }
-  )}]</small> <strong>${sender}:</strong> ${message}</li>`;
+  const messageObject = {
+    sender: sender,
+    message: message,
+    timestamp: new Date().toISOString(),
+  };
+  addMessageToLocalStorage(messageObject);
+  updateMessageDisplay();
+}
+
+function addMessageToLocalStorage(messageObject) {
+  let messages = JSON.parse(localStorage.getItem("messages")) || [];
+  messages.push(messageObject);
+  localStorage.setItem("messages", JSON.stringify(messages));
+}
+
+function loadMessages() {
+  const messages = JSON.parse(localStorage.getItem("messages")) || [];
+  messages.reverse().forEach((msg) => {
+    const date = new Date(msg.timestamp);
+    const dateString = date.toLocaleDateString();
+    const timeString = date.toLocaleTimeString("en-GB", {
+      hour: "numeric",
+      minute: "numeric",
+    });
+    const receivedMessages = document.getElementById("receivedMessages");
+    if (receivedMessages.innerHTML == "No messages :(") {
+      receivedMessages.innerHTML = "";
+    }
+    if (currentDate !== dateString) {
+      receivedMessages.innerHTML += `<p>${dateString}</p>`;
+      currentDate = dateString;
+    }
+    receivedMessages.innerHTML += `<li><small>[${timeString}]</small> <strong>${msg.sender}:</strong> ${msg.message}</li>`;
+  });
+}
+
+function updateMessageDisplay() {
+  const receivedMessages = document.getElementById("receivedMessages");
+  receivedMessages.innerHTML = "";
+  loadMessages();
 }
 
 peer.on("connection", (incomingConn) => {
