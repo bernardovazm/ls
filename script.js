@@ -1,26 +1,35 @@
 let peer;
-let max = 10;
+let maxDigits = 1000;
 let conn;
 let currentDate;
 
 async function createPeer() {
+  peerId = JSON.parse(localStorage.getItem("peerId"));
+  if (conn) {
+    conn.close();
+  }
+  if (peer) {
+    peer.destroy();
+  }
   while (!peer) {
     try {
-      const randomPeer = generateRandomId();
+      const randomPeer = peerId ?? generateRandomId(maxDigits);
       peer = new Peer(randomPeer);
       await new Promise((resolve, reject) => {
         peer.on("open", resolve);
         peer.on("error", reject);
+        localStorage.setItem("peerId", JSON.stringify(peer.id));
       });
     } catch (error) {
-      console.error("Erro ao criar peer:", error);
+      peerId = generateRandomId();
+      console.error("Error while creating a peer:", error);
     }
   }
 }
 
 createPeer();
 
-function generateRandomId(max = 10) {
+function generateRandomId(max = 1000) {
   return JSON.stringify(Math.floor(Math.random() * max));
 }
 
