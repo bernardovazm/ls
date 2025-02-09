@@ -265,8 +265,12 @@ function startTranslatingCountdown() {
   if (tgtLang === "eng_Latn") {
     translateCheckbox.style.display = "none";
   } else {
-    const isTranslating = localStorage.getItem("isTranslating") === "true";
-    translateCheckbox.checked = isTranslating;
+    const isTranslating = localStorage.getItem("isTranslating");
+    if (isTranslating === null) {
+      localStorage.setItem("isTranslating", translateCheckbox.checked);
+    } else {
+      translateCheckbox.checked = isTranslating === "true";
+    }
     const interval = setInterval(() => {
       if (countdown > 0) {
         translateLabel.innerText = `Load translation in ${countdown} seconds...`;
