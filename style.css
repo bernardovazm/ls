@@ -17,7 +17,7 @@ main {
   color: #7fffd4;
   text-align: center;
   margin-bottom: 40px;
-  border: 2px dotted #7fffd4;
+  border: 2px solid #7fffd4;
   padding: 10px;
   display: inline-block;
 }

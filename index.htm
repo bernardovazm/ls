@@ -27,14 +27,22 @@
         <label for="messageInput">Message:</label>
         <input type="text" id="messageInput" placeholder="Type your message" />
       </div>
+      <div>
+        <input type="checkbox" id="aiCheckbox" checked />
+        <label id="aiLabel" for="aiCheckbox">AI</label>
+      </div>
+      <div id="translation">
+        <input type="checkbox" id="translateCheckbox" checked />
+        <label id="translateLabel" for="translateCheckbox"
+          >Translate page</label
+        >
+      </div>
       <button id="sendButton">SEND</button>
       <h2>Received messages:</h2>
       <ul>
         <div id="receivedMessages">No messages :(</div>
       </ul>
     </main>
-
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
   </body>
 </html>
