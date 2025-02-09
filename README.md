@@ -1,6 +1,6 @@
 # LS
 
-LS is a peer-to-peer (P2P) chat application utilizing WebRTC for direct connections between users. This project also integrates AI-powered translation and question-answering capabilities to enhance the chat experience.
+LS is a peer-to-peer (P2P) chat application utilizing WebRTC for direct connections between users. This project also integrates Xenova AI-powered translation and question-answering capabilities using Transformers.js to enhance the chat experience.
 
 ## Features
 
