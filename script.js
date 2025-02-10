@@ -107,9 +107,10 @@ function setupConnection(otherUser) {
     console.info("P2P connection established successfully.");
   });
   conn.on("data", async (data) => {
-    let message = translateCheckbox.checked
-      ? `${await translate(data)} (${data})`
-      : data;
+    let message =
+      translateCheckbox.checked && translateCheckbox.style.display === "none"
+        ? `${await translate(data)} (${data})`
+        : data;
     displayMessage(otherUser ?? conn.peer, message);
   });
 }
