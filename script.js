@@ -5,8 +5,19 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3/dist/transformers.min.js";
 env.allowLocalModels = false;
 
-let translator, generator, peer, conn, currentDate;
-let maxDigits = 1000;
+let translator,
+  generator,
+  isTranslatorLoading,
+  isGeneratorLoading,
+  peer,
+  conn,
+  currentDate,
+  countdown = 10,
+  maxDigits = 1000;
+
+const translateLabel = document.getElementById("translateLabel");
+const translateCheckbox = document.getElementById("translateCheckbox");
+const translation = document.getElementById("translation");
 
 async function createPeer() {
   const storedPeerId = JSON.parse(localStorage.getItem("peerId"));
@@ -70,8 +81,15 @@ const sendMessage = async () => {
     if (aiCheckbox.checked) {
       const aiResponse = await answerQuestion(message);
       let answer = aiResponse[0].generated_text;
-      if (translateCheckbox.checked) {
-        answer = `${await translate(answer)} (${answer})`;
+      if (
+        translateCheckbox.checked &&
+        translateCheckbox.style.display === "none" &&
+        countdown === 0 &&
+        !!translator &&
+        typeof answer === "string"
+      ) {
+        const translation = await translate(data);
+        answer = `${translation} (${answer})`;
       }
       displayAIResponse(answer);
       conn.send(`AI: ${answer}`);
@@ -102,16 +120,24 @@ document
     }
   });
 
-function setupConnection(otherUser) {
+async function setupConnection(otherUser) {
   conn.on("open", () => {
     console.info("P2P connection established successfully.");
   });
   conn.on("data", async (data) => {
-    let message =
-      translateCheckbox.checked && translateCheckbox.style.display === "none"
-        ? `${await translate(data)} (${data})`
-        : data;
-    displayMessage(otherUser ?? conn.peer, message);
+    if (typeof data === "string") {
+      let message = data;
+      if (
+        translateCheckbox.checked &&
+        translateCheckbox.style.display === "none" &&
+        countdown === 0 &&
+        !!translator
+      ) {
+        const translation = await translate(data);
+        message = `${translation} (${data})`;
+      }
+      displayMessage(otherUser ?? conn.peer, message);
+    }
   });
 }
 
@@ -168,12 +194,14 @@ peer.on("connection", (incomingConn) => {
 });
 
 async function loadModel(model = "translate") {
-  if (model === "translate" && !translator) {
+  if (model === "translate" && !translator && !isTranslatorLoading) {
+    isTranslatorLoading = true;
     translator = await pipeline(
       "translation",
       "Xenova/nllb-200-distilled-600M"
     );
-  } else if (model === "generator" && !generator) {
+  } else if (model === "generator" && !generator && !isGeneratorLoading) {
+    isGeneratorLoading = true;
     generator = await pipeline(
       "text2text-generation",
       "Xenova/LaMini-Flan-T5-783M"
@@ -182,18 +210,30 @@ async function loadModel(model = "translate") {
 }
 
 async function translate(message) {
-  await loadModel("translate");
-  const output = await translator(message, {
-    src_lang: srcLang,
-    tgt_lang: tgtLang,
-  });
-  return output[0]?.translation_text;
+  if (typeof message !== "string") {
+    return null;
+  }
+  try {
+    await loadModel("translate");
+    const output = await translator(message, {
+      src_lang: srcLang,
+      tgt_lang: tgtLang,
+    });
+    return output[0]?.translation_text;
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 async function answerQuestion(question) {
-  await loadModel("generator");
-  let output = await generator(question, { max_new_tokens: 100 });
-  return output;
+  try {
+    await loadModel("generator");
+    let output = await generator(question, { max_new_tokens: 100 });
+    return output;
+  } catch (error) {
+    console.error(error);
+    return question;
+  }
 }
 
 const userLang = navigator.language || navigator.userLanguage;
@@ -254,15 +294,12 @@ async function loadPageTranslation() {
 async function translateElement(el) {
   const originalText = el.innerText;
   const translatedText = await translate(originalText);
-  el.innerText = `${translatedText} (${originalText})`;
+  !translatedText
+    ? (el.innerText = `${translatedText} (${originalText})`)
+    : originalText;
 }
 
-let countdown = 10;
-const translateLabel = document.getElementById("translateLabel");
-const translateCheckbox = document.getElementById("translateCheckbox");
-const translation = document.getElementById("translation");
-
-function startTranslatingCountdown() {
+async function startTranslatingCountdown() {
   if (tgtLang === "eng_Latn") {
     translateCheckbox.style.display = "none";
   } else {
@@ -279,7 +316,9 @@ function startTranslatingCountdown() {
       } else {
         clearInterval(interval);
         if (translateCheckbox.checked) {
-          loadPageTranslation();
+          loadPageTranslation().then(() => {
+            isTranslatorLoading = false;
+          });
           translateLabel.innerText = "Translation activated.";
         } else {
           translation.style.display = "none";
