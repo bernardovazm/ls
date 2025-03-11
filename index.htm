@@ -9,7 +9,7 @@
       rel="icon"
       type="image/svg+xml"
       sizes="any"
-      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 110 100%22><text y=%22.9em%22 font-size=%2290%22>📁</text></svg>"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 110 100%22><text y=%221.0em%22 font-size=%2290%22>💬</text></svg>"
     />
     <link rel="stylesheet" href="style.css" />
   </head>
@@ -28,20 +28,29 @@
         <input type="text" id="messageInput" placeholder="Type your message" />
       </div>
       <div>
-        <input type="checkbox" id="aiCheckbox" checked />
+        <input type="checkbox" id="micCheckbox" />
+        <label for="micCheckbox">Microphone</label>
+      </div>
+      <div>
+        <input type="checkbox" id="aiCheckbox" />
         <label id="aiLabel" for="aiCheckbox">AI</label>
       </div>
       <div id="translation">
-        <input type="checkbox" id="translateCheckbox" checked />
+        <input type="checkbox" id="translateCheckbox" />
         <label id="translateLabel" for="translateCheckbox"
           >Translate page</label
         >
+      </div>
+      <div id="loadingIndicator">
+        <div id="spinner"></div>
+        Loading AI...
       </div>
       <button id="sendButton">SEND</button>
       <h2>Received messages:</h2>
       <ul>
         <div id="receivedMessages">No messages :(</div>
       </ul>
+      <audio id="remoteAudio" autoplay></audio>
     </main>
     <script type="module" src="script.js"></script>
   </body>

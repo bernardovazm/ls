@@ -18,6 +18,9 @@ let translator,
 const translateLabel = document.getElementById("translateLabel");
 const translateCheckbox = document.getElementById("translateCheckbox");
 const translation = document.getElementById("translation");
+const micCheckbox = document.getElementById("micCheckbox");
+let localStream;
+let call;
 
 async function createPeer() {
   const storedPeerId = JSON.parse(localStorage.getItem("peerId"));
@@ -69,33 +72,52 @@ window.onload = () => {
 const sendMessage = async () => {
   const peerId = document.getElementById("peerIdInput").value;
   const message = document.getElementById("messageInput").value;
-  const aiCheckbox = document.getElementById("aiCheckbox");
+  const aiCheckbox = document.getElementById("aiCheckbox"); // Checkbox para ativar/desativar IA
+
   if (!conn) {
+    // Cria a conexão
     conn = peer.connect(peerId);
-    setupConnection(peerId);
-  }
-  if (message) {
-    conn.send(message);
-    displayMessage("You", message);
-    document.getElementById("messageInput").value = "";
-    if (aiCheckbox.checked) {
-      const aiResponse = await answerQuestion(message);
-      let answer = aiResponse[0].generated_text;
-      if (
-        translateCheckbox.checked &&
-        translateCheckbox.style.display === "none" &&
-        countdown === 0 &&
-        !!translator &&
-        typeof answer === "string"
-      ) {
-        const translation = await translate(data);
-        answer = `${translation} (${answer})`;
+
+    // Aguarda a conexão abrir antes de prosseguir
+    conn.on("open", () => {
+      console.log("P2P connection established successfully.");
+      // Configura os eventos da conexão
+      setupConnection(peerId);
+      // Envia a mensagem assim que a conexão estiver aberta
+      if (message) {
+        conn.send(message);
+        displayMessage("You", message);
+        document.getElementById("messageInput").value = "";
+        // Verifica se a IA está ativada e gera uma resposta
+        if (aiCheckbox.checked) {
+          generateAIResponse(message);
+        }
       }
-      displayAIResponse(answer);
-      conn.send(`AI: ${answer}`);
+    });
+  } else {
+    // Se a conexão já existe, envia a mensagem diretamente
+    if (message) {
+      conn.send(message);
+      displayMessage("You", message);
+      document.getElementById("messageInput").value = "";
+      // Verifica se a IA está ativada e gera uma resposta
+      if (aiCheckbox.checked) {
+        generateAIResponse(message);
+      }
     }
   }
 };
+
+async function generateAIResponse(question) {
+  try {
+    const aiResponse = await answerQuestion(question);
+    const answer = aiResponse[0].generated_text;
+    displayAIResponse(answer);
+    conn.send(`AI: ${answer}`);
+  } catch (error) {
+    console.error("Erro ao gerar resposta da IA:", error);
+  }
+}
 
 function displayAIResponse(response) {
   const receivedMessages = document.getElementById("receivedMessages");
@@ -109,6 +131,14 @@ function displayAIResponse(response) {
   receivedMessages.innerHTML += `<li><small>[${new Date().toLocaleTimeString()}]</small> <strong>AI:</strong> <span>${response}</span></li>`;
 }
 
+function setupConnection(otherUser) {
+  conn.on("data", (data) => {
+    if (typeof data === "string") {
+      displayMessage(otherUser ?? conn.peer, data);
+    }
+  });
+}
+
 document.getElementById("sendButton").addEventListener("click", sendMessage);
 
 document
@@ -119,27 +149,6 @@ document
       event.preventDefault();
     }
   });
-
-async function setupConnection(otherUser) {
-  conn.on("open", () => {
-    console.info("P2P connection established successfully.");
-  });
-  conn.on("data", async (data) => {
-    if (typeof data === "string") {
-      let message = data;
-      if (
-        translateCheckbox.checked &&
-        translateCheckbox.style.display === "none" &&
-        countdown === 0 &&
-        !!translator
-      ) {
-        const translation = await translate(data);
-        message = `${translation} (${data})`;
-      }
-      displayMessage(otherUser ?? conn.peer, message);
-    }
-  });
-}
 
 function displayMessage(sender, message) {
   const receivedMessages = document.getElementById("receivedMessages");
@@ -193,20 +202,63 @@ peer.on("connection", (incomingConn) => {
   setupConnection();
 });
 
+// Configuração para receber chamadas de áudio
+peer.on("call", (incomingCall) => {
+  incomingCall.answer(); // Responde à chamada sem enviar áudio próprio
+  incomingCall.on("stream", (remoteStream) => {
+    const remoteAudio = document.getElementById("remoteAudio");
+    remoteAudio.srcObject = remoteStream;
+  });
+});
+
+// Gerenciamento do checkbox de microfone
+micCheckbox.addEventListener("change", async () => {
+  if (micCheckbox.checked) {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (conn) {
+        call = peer.call(conn.peer, localStream);
+      } else {
+        console.error("No peer connection established.");
+        micCheckbox.checked = false;
+      }
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      micCheckbox.checked = false;
+    }
+  } else {
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+      localStream = null;
+    }
+    if (call) {
+      call.close();
+      call = null;
+    }
+  }
+});
+
 async function loadModel(model = "translate") {
+  const loadingIndicator = document.getElementById("loadingIndicator");
+  loadingIndicator.style.display = "block"; // Mostra o indicativo
+
   if (model === "translate" && !translator && !isTranslatorLoading) {
     isTranslatorLoading = true;
     translator = await pipeline(
       "translation",
       "Xenova/nllb-200-distilled-600M"
     );
+    isTranslatorLoading = false;
   } else if (model === "generator" && !generator && !isGeneratorLoading) {
     isGeneratorLoading = true;
     generator = await pipeline(
       "text2text-generation",
       "Xenova/LaMini-Flan-T5-783M"
     );
+    isGeneratorLoading = false;
   }
+
+  loadingIndicator.style.display = "none"; // Esconde o indicativo
 }
 
 async function translate(message) {
@@ -266,7 +318,7 @@ switch (userLangCode) {
     tgtLang = "jpn_Jpan";
     break;
   default:
-    tgtLang = `eng_Latn`;
+    tgtLang = "eng_Latn";
 }
 
 async function loadPageTranslation() {
@@ -294,8 +346,8 @@ async function loadPageTranslation() {
 async function translateElement(el) {
   const originalText = el.innerText;
   const translatedText = await translate(originalText);
-  !translatedText
-    ? (el.innerText = `${translatedText} (${originalText})`)
+  el.innerText = translatedText
+    ? `${translatedText} (${originalText})`
     : originalText;
 }
 
@@ -311,7 +363,7 @@ async function startTranslatingCountdown() {
     }
     const interval = setInterval(() => {
       if (countdown > 0) {
-        translateLabel.innerText = `Load translation in ${countdown} seconds...`;
+        translateLabel.innerText = `Load automatic translation in ${countdown} seconds...`;
         countdown--;
       } else {
         clearInterval(interval);
