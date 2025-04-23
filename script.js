@@ -5,381 +5,265 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3/dist/transformers.min.js";
 env.allowLocalModels = false;
 
-let translator,
-  generator,
-  isTranslatorLoading,
-  isGeneratorLoading,
-  peer,
-  conn,
-  currentDate,
-  countdown = 10,
-  maxDigits = 1000;
+/* ---------- DOM helpers ---------- */
+const $ = (q) => document.querySelector(q);
+const UI = {
+  idLabel: $("#yourPeerId"),
+  peerIdInput: $("#peerIdInput"),
+  msgInput: $("#messageInput"),
+  mic: $("#micCheckbox"),
+  ai: $("#aiCheckbox"),
+  translate: $("#translateCheckbox"),
+  translateLbl: $("#translateLabel"),
+  translateBox: $("#translation"),
+  loading: $("#loadingIndicator"),
+  messages: $("#receivedMessages"),
+  send: $("#sendButton"),
+  remoteAudio: $("#remoteAudio"),
+};
 
-const translateLabel = document.getElementById("translateLabel");
-const translateCheckbox = document.getElementById("translateCheckbox");
-const translation = document.getElementById("translation");
-const micCheckbox = document.getElementById("micCheckbox");
-let localStream;
-let call;
+/* ---------- Storage wrapper ---------- */
+const store = {
+  get: (k, d = null) => JSON.parse(localStorage.getItem(k) || "null") ?? d,
+  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+};
 
-async function createPeer() {
-  const storedPeerId = JSON.parse(localStorage.getItem("peerId"));
-  let peerId;
-  if (conn) conn.close();
-  if (peer) peer.destroy();
-  try {
-    peerId = storedPeerId || generateRandomId(maxDigits);
-    peer = new Peer(peerId);
-    await new Promise((resolve, reject) => {
-      peer.on("open", (id) => {
-        localStorage.setItem("peerId", JSON.stringify(id));
-        resolve(id);
+/* ---------- Random-ID helpers ---------- */
+function randomDigits(len) {
+  return String(Math.floor(Math.random() * 10 ** len)).padStart(len, "0");
+}
+
+/* ---------- Globals ---------- */
+let peer, conn, call, localStream;
+let translator, generator;
+
+/* ---------- Init ---------- */
+init();
+
+async function init() {
+  await createUniquePeer();
+  loadSavedMessages();
+
+  UI.send.addEventListener("click", handleSend);
+  UI.msgInput.addEventListener(
+    "keypress",
+    (e) => e.key === "Enter" && handleSend()
+  );
+  UI.mic.addEventListener("change", handleMicToggle);
+
+  startTranslationCountdown();
+}
+
+/* ---------- PeerJS ---------- */
+async function createUniquePeer() {
+  const cached = store.get("peerId");
+  if (cached) {
+    try {
+      await establishPeer(cached);
+      return;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  let length = 3;
+  while (true) {
+    const candidate = randomDigits(length);
+    try {
+      await establishPeer(candidate);
+      store.set("peerId", candidate);
+      return;
+    } catch (err) {
+      if (err?.type === "unavailable-id") length++;
+      else {
+        console.error(err);
+        length++;
+      }
+    }
+  }
+}
+
+function establishPeer(id) {
+  return new Promise((resolve, reject) => {
+    peer = new Peer(id);
+    peer.once("open", () => {
+      UI.idLabel.textContent = `Your ID: ${id}`;
+      resolve();
+    });
+    peer.once("error", (e) => {
+      peer.destroy();
+      reject(e);
+    });
+    peer.on("connection", (c) => {
+      conn = c;
+      bindConnection();
+    });
+    peer.on("call", (incoming) => {
+      incoming.answer();
+      incoming.on("stream", (remote) => {
+        UI.remoteAudio.srcObject = remote;
       });
-      peer.on("error", reject);
     });
-    peer.on("connection", (incomingConn) => {
-      conn = incomingConn;
-      setupConnection();
-    });
-    console.info("Peer created with ID:", peer.id);
-    document.getElementById("yourPeerId").innerText = `Your ID: ${peer.id}`;
-  } catch (error) {
-    maxDigits *= 10;
-    console.error(error);
-    localStorage.removeItem("peerId");
-    await createPeer();
-  }
-}
-
-createPeer()
-  .then(() => {
-    console.info("Peer ready to use.");
-  })
-  .catch(console.error);
-
-function generateRandomId(max = 1000) {
-  return JSON.stringify(Math.floor(Math.random() * max));
-}
-
-peer.on("open", (id) => {
-  document.getElementById("yourPeerId").innerText = `Your ID: ${id}`;
-});
-
-window.onload = () => {
-  loadMessages();
-};
-
-const sendMessage = async () => {
-  const peerId = document.getElementById("peerIdInput").value;
-  const message = document.getElementById("messageInput").value;
-  const aiCheckbox = document.getElementById("aiCheckbox"); // Checkbox para ativar/desativar IA
-
-  if (!conn) {
-    // Cria a conexão
-    conn = peer.connect(peerId);
-
-    // Aguarda a conexão abrir antes de prosseguir
-    conn.on("open", () => {
-      console.log("P2P connection established successfully.");
-      // Configura os eventos da conexão
-      setupConnection(peerId);
-      // Envia a mensagem assim que a conexão estiver aberta
-      if (message) {
-        conn.send(message);
-        displayMessage("You", message);
-        document.getElementById("messageInput").value = "";
-        // Verifica se a IA está ativada e gera uma resposta
-        if (aiCheckbox.checked) {
-          generateAIResponse(message);
-        }
-      }
-    });
-  } else {
-    // Se a conexão já existe, envia a mensagem diretamente
-    if (message) {
-      conn.send(message);
-      displayMessage("You", message);
-      document.getElementById("messageInput").value = "";
-      // Verifica se a IA está ativada e gera uma resposta
-      if (aiCheckbox.checked) {
-        generateAIResponse(message);
-      }
-    }
-  }
-};
-
-async function generateAIResponse(question) {
-  try {
-    const aiResponse = await answerQuestion(question);
-    const answer = aiResponse[0].generated_text;
-    displayAIResponse(answer);
-    conn.send(`AI: ${answer}`);
-  } catch (error) {
-    console.error("Erro ao gerar resposta da IA:", error);
-  }
-}
-
-function displayAIResponse(response) {
-  const receivedMessages = document.getElementById("receivedMessages");
-  const messageObject = {
-    sender: "AI",
-    message: response,
-    timestamp: new Date().toISOString(),
-  };
-  addMessageToLocalStorage(messageObject);
-  updateMessageDisplay();
-  receivedMessages.innerHTML += `<li><small>[${new Date().toLocaleTimeString()}]</small> <strong>AI:</strong> <span>${response}</span></li>`;
-}
-
-function setupConnection(otherUser) {
-  conn.on("data", (data) => {
-    if (typeof data === "string") {
-      displayMessage(otherUser ?? conn.peer, data);
-    }
   });
 }
 
-document.getElementById("sendButton").addEventListener("click", sendMessage);
-
-document
-  .getElementById("messageInput")
-  .addEventListener("keypress", (event) => {
-    if (event.key === "Enter") {
-      document.getElementById("sendButton").click();
-      event.preventDefault();
-    }
-  });
-
-function displayMessage(sender, message) {
-  const receivedMessages = document.getElementById("receivedMessages");
-  if (receivedMessages.innerHTML == "No messages :(") {
-    receivedMessages.innerHTML = "";
-  }
-  const messageObject = {
-    sender: sender,
-    message: message,
-    timestamp: new Date().toISOString(),
-  };
-  addMessageToLocalStorage(messageObject);
-  updateMessageDisplay();
+/* ---------- Connection helpers ---------- */
+function bindConnection() {
+  conn.on("data", (d) => displayMessage(conn.peer, d));
 }
-
-function addMessageToLocalStorage(messageObject) {
-  let messages = JSON.parse(localStorage.getItem("messages")) || [];
-  messages.push(messageObject);
-  localStorage.setItem("messages", JSON.stringify(messages));
-}
-
-function loadMessages() {
-  const messages = JSON.parse(localStorage.getItem("messages")) || [];
-  messages.reverse().forEach((msg) => {
-    const date = new Date(msg.timestamp);
-    const dateString = date.toLocaleDateString();
-    const timeString = date.toLocaleTimeString("en-GB", {
-      hour: "numeric",
-      minute: "numeric",
-    });
-    const receivedMessages = document.getElementById("receivedMessages");
-    if (receivedMessages.innerHTML == "No messages :(") {
-      receivedMessages.innerHTML = "";
-    }
-    if (currentDate !== dateString) {
-      receivedMessages.innerHTML += `<p>${dateString}</p>`;
-      currentDate = dateString;
-    }
-    receivedMessages.innerHTML += `<li><small>[${timeString}]</small> <strong>${msg.sender}:</strong> <span>${msg.message}</span></li>`;
+function connectToPeer(id) {
+  conn = peer.connect(id);
+  conn.once("open", () => {
+    console.info("Connected to", id);
+    bindConnection();
   });
 }
 
-function updateMessageDisplay() {
-  const receivedMessages = document.getElementById("receivedMessages");
-  receivedMessages.innerHTML = "";
-  loadMessages();
+/* ---------- Messaging ---------- */
+function handleSend() {
+  const target = UI.peerIdInput.value.trim();
+  const text = UI.msgInput.value.trim();
+  if (!text) return;
+
+  if (!conn) connectToPeer(target);
+  conn?.send(text);
+  displayMessage("You", text);
+  UI.msgInput.value = "";
+
+  if (UI.ai.checked) aiRespond(text);
 }
 
-peer.on("connection", (incomingConn) => {
-  conn = incomingConn;
-  setupConnection();
-});
+function displayMessage(sender, text, skipSave = false) {
+  if (UI.messages.firstElementChild?.textContent.startsWith("No"))
+    UI.messages.innerHTML = "";
 
-// Configuração para receber chamadas de áudio
-peer.on("call", (incomingCall) => {
-  incomingCall.answer(); // Responde à chamada sem enviar áudio próprio
-  incomingCall.on("stream", (remoteStream) => {
-    const remoteAudio = document.getElementById("remoteAudio");
-    remoteAudio.srcObject = remoteStream;
+  const time = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
   });
-});
+  UI.messages.insertAdjacentHTML(
+    "afterbegin",
+    `<li><small>[${time}]</small> <strong>${sender}:</strong> ${text}</li>`
+  );
 
-// Gerenciamento do checkbox de microfone
-micCheckbox.addEventListener("change", async () => {
-  if (micCheckbox.checked) {
+  if (!skipSave) saveMessage({ sender, text, timestamp: Date.now() });
+}
+
+function saveMessage(m) {
+  const all = store.get("messages", []);
+  all.push(m);
+  store.set("messages", all);
+}
+function loadSavedMessages() {
+  for (const m of store.get("messages", []))
+    displayMessage(m.sender, m.text, true);
+}
+
+/* ---------- Microphone ---------- */
+async function handleMicToggle() {
+  if (UI.mic.checked) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (conn) {
-        call = peer.call(conn.peer, localStream);
-      } else {
-        console.error("No peer connection established.");
-        micCheckbox.checked = false;
-      }
-    } catch (error) {
-      console.error("Error accessing microphone:", error);
-      micCheckbox.checked = false;
+      if (conn) call = peer.call(conn.peer, localStream);
+    } catch (e) {
+      console.error(e);
+      UI.mic.checked = false;
     }
   } else {
-    if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop());
-      localStream = null;
-    }
-    if (call) {
-      call.close();
-      call = null;
-    }
-  }
-});
-
-async function loadModel(model = "translate") {
-  const loadingIndicator = document.getElementById("loadingIndicator");
-  loadingIndicator.style.display = "block"; // Mostra o indicativo
-
-  if (model === "translate" && !translator && !isTranslatorLoading) {
-    isTranslatorLoading = true;
-    translator = await pipeline(
-      "translation",
-      "Xenova/nllb-200-distilled-600M"
-    );
-    isTranslatorLoading = false;
-  } else if (model === "generator" && !generator && !isGeneratorLoading) {
-    isGeneratorLoading = true;
-    generator = await pipeline(
-      "text2text-generation",
-      "Xenova/LaMini-Flan-T5-783M"
-    );
-    isGeneratorLoading = false;
-  }
-
-  loadingIndicator.style.display = "none"; // Esconde o indicativo
-}
-
-async function translate(message) {
-  if (typeof message !== "string") {
-    return null;
-  }
-  try {
-    await loadModel("translate");
-    const output = await translator(message, {
-      src_lang: srcLang,
-      tgt_lang: tgtLang,
-    });
-    return output[0]?.translation_text;
-  } catch (error) {
-    console.error(error);
+    localStream?.getTracks().forEach((t) => t.stop());
+    call?.close();
   }
 }
 
-async function answerQuestion(question) {
-  try {
-    await loadModel("generator");
-    let output = await generator(question, { max_new_tokens: 100 });
-    return output;
-  } catch (error) {
-    console.error(error);
-    return question;
-  }
+/* ---------- AI ---------- */
+async function aiRespond(q) {
+  const pipe = await loadGenerator();
+  const [{ generated_text }] = await pipe(q, { max_new_tokens: 100 });
+  displayMessage("AI", generated_text);
+  conn?.send(`AI: ${generated_text}`);
+}
+function loadGenerator() {
+  return generator ? Promise.resolve(generator) : loadModel("generator");
 }
 
-const userLang = navigator.language || navigator.userLanguage;
-const userLangCode = userLang.substring(0, 2);
-const srcLang = "eng_Latn";
-let tgtLang = "";
-switch (userLangCode) {
-  case "pt":
-    tgtLang = "por_Latn";
-    break;
-  case "es":
-    tgtLang = "spa_Latn";
-    break;
-  case "fr":
-    tgtLang = "fra_Latn";
-    break;
-  case "de":
-    tgtLang = "deu_Latn";
-    break;
-  case "it":
-    tgtLang = "ita_Latn";
-    break;
-  case "hi":
-    tgtLang = "hin_Deva";
-    break;
-  case "zh":
-    tgtLang = "zho_Hans";
-    break;
-  case "jp":
-    tgtLang = "jpn_Jpan";
-    break;
-  default:
-    tgtLang = "eng_Latn";
-}
+/* ---------- Translation ---------- */
+const langMap = {
+  pt: "por_Latn",
+  es: "spa_Latn",
+  fr: "fra_Latn",
+  de: "deu_Latn",
+  it: "ita_Latn",
+  hi: "hin_Deva",
+  zh: "zho_Hans",
+  ja: "jpn_Jpan",
+};
+const userLang = navigator.language.slice(0, 2);
+const tgtLang = langMap[userLang] ?? "eng_Latn";
 
-async function loadPageTranslation() {
-  const elements = document.querySelectorAll("body *");
-  const textsToTranslate = [];
-  elements.forEach((el) => {
-    if (
-      el.nodeName.toLowerCase() !== "script" &&
-      el.nodeName.toLowerCase() !== "style" &&
-      el.nodeName.toLowerCase() !== "noscript" &&
-      el.innerText.trim() !== "" &&
-      el.children.length === 0 &&
-      typeof el.innerText === "string" &&
-      el.innerText !== "LS"
-    ) {
-      textsToTranslate.push(el);
-    }
+async function translate(txt) {
+  const run = await loadTranslator();
+  const [{ translation_text }] = await run(txt, {
+    src_lang: "eng_Latn",
+    tgt_lang: tgtLang,
   });
-  for (let i = 0; i < textsToTranslate.length; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await translateElement(textsToTranslate[i]);
-  }
+  return translation_text;
+}
+function loadTranslator() {
+  return translator ? Promise.resolve(translator) : loadModel("translate");
 }
 
-async function translateElement(el) {
-  const originalText = el.innerText;
-  const translatedText = await translate(originalText);
-  el.innerText = translatedText
-    ? `${translatedText} (${originalText})`
-    : originalText;
+async function loadModel(type) {
+  UI.loading.hidden = false;
+  const model =
+    type === "translate"
+      ? await pipeline("translation", "Xenova/nllb-200-distilled-600M")
+      : await pipeline("text2text-generation", "Xenova/LaMini-Flan-T5-783M");
+  UI.loading.hidden = true;
+  if (type === "translate") translator = model;
+  else generator = model;
+  return model;
 }
 
-async function startTranslatingCountdown() {
+/* ---------- Translation countdown ---------- */
+function startTranslationCountdown() {
   if (tgtLang === "eng_Latn") {
-    translateCheckbox.style.display = "none";
-  } else {
-    const isTranslating = localStorage.getItem("isTranslating");
-    if (isTranslating === null) {
-      localStorage.setItem("isTranslating", translateCheckbox.checked);
-    } else {
-      translateCheckbox.checked = isTranslating === "true";
-    }
-    const interval = setInterval(() => {
-      if (countdown > 0) {
-        translateLabel.innerText = `Load automatic translation in ${countdown} seconds...`;
-        countdown--;
-      } else {
-        clearInterval(interval);
-        if (translateCheckbox.checked) {
-          loadPageTranslation().then(() => {
-            isTranslatorLoading = false;
-          });
-          translateLabel.innerText = "Translation activated.";
-        } else {
-          translation.style.display = "none";
-        }
-        translateCheckbox.style.display = "none";
-        localStorage.setItem("isTranslating", translateCheckbox.checked);
-      }
-    }, 1000);
+    UI.translateBox.hidden = true;
+    return;
   }
+  const enabled = store.get("autoTranslate", false);
+  UI.translate.checked = enabled;
+
+  let sec = 10;
+  const timer = setInterval(() => {
+    if (--sec > 0) {
+      UI.translateLbl.textContent = `Start automatic translation in ${sec}s…`;
+    } else {
+      clearInterval(timer);
+      UI.translateLbl.textContent = enabled ? "Translating…" : "";
+      UI.translate.disabled = true;
+      if (enabled) translatePage();
+      else UI.translate.style.display = "none";
+    }
+  }, 1000);
+
+  UI.translate.addEventListener("change", () =>
+    store.set("autoTranslate", UI.translate.checked)
+  );
 }
 
-startTranslatingCountdown();
+async function translatePage() {
+  const els = [
+    ...document.body.querySelectorAll("*:not(script):not(style):not(noscript)"),
+  ];
+  for (const el of els) {
+    if (
+      !el.children.length &&
+      el.textContent.trim() &&
+      el.textContent !== "LS"
+    ) {
+      const original = el.textContent;
+      const translated = await translate(original);
+      el.textContent = translated ? `${translated} (${original})` : original;
+    }
+  }
+}
