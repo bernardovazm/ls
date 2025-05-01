@@ -5,173 +5,268 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3/dist/transformers.min.js";
 env.allowLocalModels = false;
 
-/* ---------- DOM helpers ---------- */
+/* ---------- DOM ---------- */
 const $ = (q) => document.querySelector(q);
 const UI = {
-  idLabel: $("#yourPeerId"),
-  peerIdInput: $("#peerIdInput"),
-  msgInput: $("#messageInput"),
+  id: $("#yourPeerId"),
+  pid: $("#peerIdInput"),
+  msg: $("#messageInput"),
   mic: $("#micCheckbox"),
   ai: $("#aiCheckbox"),
+  tChk: $("#translateCheckbox"),
+  tLbl: $("#translateLabel"),
+  tBox: $("#translation"),
+  load: $("#loadingIndicator"),
   translate: $("#translateCheckbox"),
   translateLbl: $("#translateLabel"),
   translateBox: $("#translation"),
-  loading: $("#loadingIndicator"),
-  messages: $("#receivedMessages"),
-  send: $("#sendButton"),
-  remoteAudio: $("#remoteAudio"),
+  sendBtn: $("#sendButton"),
+  addBtn: $("#addUserBtn"),
+  uList: $("#userList"),
+  msgs: $("#receivedMessages"),
+  audio: $("#remoteAudio"),
 };
 
 /* ---------- Storage wrapper ---------- */
 const store = {
-  get: (k, d = null) => JSON.parse(localStorage.getItem(k) || "null") ?? d,
+  get: (k, d = []) => JSON.parse(localStorage.getItem(k) || "null") ?? d,
   set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
 };
 
-/* ---------- Random-ID helpers ---------- */
-function randomDigits(len) {
-  return String(Math.floor(Math.random() * 10 ** len)).padStart(len, "0");
-}
-
 /* ---------- Globals ---------- */
-let peer, conn, call, localStream;
-let translator, generator;
+let peer,
+  peerReady = Promise.resolve();
+let booting = false;
+const connections = new Map();
+let localStream, translator, generator;
 
-/* ---------- Init ---------- */
+/* ---------- Boot ---------- */
 init();
 
 async function init() {
-  await createUniquePeer();
+  await bootstrapPeer();
   loadSavedMessages();
+  renderUserList();
 
-  UI.send.addEventListener("click", handleSend);
-  UI.msgInput.addEventListener(
-    "keypress",
-    (e) => e.key === "Enter" && handleSend()
-  );
+  UI.sendBtn.addEventListener("click", handleSend);
+  UI.msg.addEventListener("keypress", (e) => e.key === "Enter" && handleSend());
   UI.mic.addEventListener("change", handleMicToggle);
-
+  UI.addBtn.addEventListener("click", handleAddUser);
+  setInterval(reconnectLoop, 5000);
   startTranslationCountdown();
 }
 
-/* ---------- PeerJS ---------- */
-async function createUniquePeer() {
-  const cached = store.get("peerId");
-  if (cached) {
-    try {
-      await establishPeer(cached);
-      return;
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  let length = 3;
-  while (true) {
-    const candidate = randomDigits(length);
-    try {
-      await establishPeer(candidate);
-      store.set("peerId", candidate);
-      return;
-    } catch (err) {
-      if (err?.type === "unavailable-id") length++;
-      else {
-        console.error(err);
-        length++;
+/* ---------- Peer bootstrap ---------- */
+async function bootstrapPeer() {
+  if (booting) return peerReady;
+  booting = true;
+  peerReady = (async () => {
+    const cached = store.get("peerId", "");
+    if (cached && (await tryId(cached))) return;
+    for (let len = 3; ; len++) {
+      const id = randomId(len);
+      if (await tryId(id)) {
+        store.set("peerId", id);
+        return;
       }
     }
+  })();
+  await peerReady;
+  booting = false;
+}
+
+function randomId(len) {
+  return String(Math.floor(Math.random() * 10 ** len)).padStart(len, "0");
+}
+
+async function tryId(id) {
+  try {
+    await establishPeer(id);
+    return true;
+  } catch (e) {
+    console.warn("ID", id, "failed:", e?.type || e);
+    return false;
   }
 }
 
 function establishPeer(id) {
-  return new Promise((resolve, reject) => {
-    peer = new Peer(id);
-    peer.once("open", () => {
-      UI.idLabel.textContent = `Your ID: ${id}`;
-      resolve();
+  return new Promise((res, rej) => {
+    let p;
+    try {
+      p = new Peer(id);
+    } catch (e) {
+      return rej(e);
+    }
+    if (!p || typeof p.once !== "function")
+      return rej(new Error("Peer init failed"));
+
+    peer?.destroy?.();
+    peer = p;
+
+    p.once("open", () => {
+      UI.id.textContent = `Your ID: ${id}`;
+      res();
     });
-    peer.once("error", (e) => {
-      peer.destroy();
-      reject(e);
-    });
-    peer.on("connection", (c) => {
-      conn = c;
-      bindConnection();
-    });
-    peer.on("call", (incoming) => {
-      incoming.answer();
-      incoming.on("stream", (remote) => {
-        UI.remoteAudio.srcObject = remote;
-      });
+    p.on("error", (err) => console.warn("[Peer error]", err.type || err));
+
+    p.on("connection", attachConn);
+    p.on("call", (call) => {
+      call.answer();
+      call.on("stream", (s) => (UI.audio.srcObject = s));
     });
   });
 }
 
-/* ---------- Connection helpers ---------- */
-function bindConnection() {
-  conn.on("data", (d) => displayMessage(conn.peer, d));
+async function ensurePeer() {
+  if (!peer || peer.destroyed) await bootstrapPeer();
+  else await peerReady;
 }
-function connectToPeer(id) {
-  conn = peer.connect(id);
-  conn.once("open", () => {
-    console.info("Connected to", id);
-    bindConnection();
+
+/* ---------- User list ---------- */
+function getList() {
+  return store.get("userList");
+}
+function saveList(a) {
+  store.set("userList", a);
+}
+function renderUserList() {
+  const list = getList();
+  UI.uList.innerHTML = "";
+  if (!list.length) {
+    UI.uList.innerHTML = "<li>No users added.</li>";
+    return;
+  }
+  for (const id of list) {
+    const online = connections.get(id)?.open;
+    UI.uList.insertAdjacentHTML(
+      "beforeend",
+      `<li>${id}<span class="status">${online ? "●" : "○"}</span></li>`
+    );
+  }
+}
+
+function handleAddUser() {
+  const id = UI.pid.value.trim();
+  if (!id || id === peer.id) return;
+  const list = getList();
+  if (!list.includes(id)) {
+    list.push(id);
+    saveList(list);
+    renderUserList();
+    connect(id);
+  }
+  UI.pid.value = "";
+}
+
+/* ---------- Connections ---------- */
+function attachConn(conn) {
+  connections.set(conn.peer, conn);
+  updateStatus(conn.peer, true);
+  conn.on("data", (d) => displayMsg(conn.peer, d));
+  conn.on("close", () => updateStatus(conn.peer, false));
+  conn.on("error", () => updateStatus(conn.peer, false));
+}
+
+const lastAttempt = new Map();
+
+async function connect(id) {
+  if (id === peer.id) return;
+
+  const now = Date.now();
+  if (lastAttempt.has(id) && now - lastAttempt.get(id) < 15000) return;
+  lastAttempt.set(id, now);
+
+  await ensurePeer();
+
+  const stale = connections.get(id);
+  if (stale && !stale.open) {
+    stale.close();
+    connections.delete(id);
+  }
+  if (connections.get(id)?.open) return;
+
+  let conn;
+  try {
+    conn = peer.connect(id);
+  } catch (err) {
+    console.warn("peer.connect() threw for", id, err);
+    updateStatus(id, false);
+    return;
+  }
+  if (!conn) {
+    console.warn("peer.connect() returned undefined for", id);
+    return;
+  }
+
+  conn.once("open", () => attachConn(conn));
+  conn.on("error", () => {
+    conn.close();
+    connections.delete(id);
+    updateStatus(id, false);
   });
+}
+
+function reconnectLoop() {
+  for (const id of getList()) if (!connections.get(id)?.open) connect(id);
+  renderUserList();
+}
+function updateStatus(id, on) {
+  const li = [...UI.uList.children].find((el) => el.textContent.startsWith(id));
+  if (li) li.querySelector(".status").textContent = on ? "●" : "○";
 }
 
 /* ---------- Messaging ---------- */
 function handleSend() {
-  const target = UI.peerIdInput.value.trim();
-  const text = UI.msgInput.value.trim();
-  if (!text) return;
-
-  if (!conn) connectToPeer(target);
-  conn?.send(text);
-  displayMessage("You", text);
-  UI.msgInput.value = "";
-
-  if (UI.ai.checked) aiRespond(text);
+  const txt = UI.msg.value.trim();
+  if (!txt) return;
+  for (const c of connections.values()) if (c.open) c.send(txt);
+  displayMsg("You", txt);
+  UI.msg.value = "";
+  if (UI.ai.checked) aiRespond(txt);
 }
-
-function displayMessage(sender, text, skipSave = false) {
-  if (UI.messages.firstElementChild?.textContent.startsWith("No"))
-    UI.messages.innerHTML = "";
-
-  const time = new Date().toLocaleTimeString([], {
+async function displayMsg(sender, txt, skip = false) {
+  if (UI.msgs.firstElementChild?.textContent.startsWith("No"))
+    UI.msgs.innerHTML = "";
+  const t = new Date().toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
-  UI.messages.insertAdjacentHTML(
+  if (
+    !!translator &&
+    store.get("autoTranslate", false) &&
+    typeof txt === "string"
+  )
+    txt = `${await translate(txt)} (${txt})`;
+  UI.msgs.insertAdjacentHTML(
     "afterbegin",
-    `<li><small>[${time}]</small> <strong>${sender}:</strong> ${text}</li>`
+    `<li><small>[${t}]</small> <strong>${sender}:</strong> <span>${txt}</span></li>`
   );
-
-  if (!skipSave) saveMessage({ sender, text, timestamp: Date.now() });
+  if (!skip) saveMsg({ sender: sender, text: txt, time: Date.now() });
 }
-
-function saveMessage(m) {
-  const all = store.get("messages", []);
-  all.push(m);
-  store.set("messages", all);
+function saveMsg(m) {
+  const a = store.get("messages");
+  a.push(m);
+  store.set("messages", a);
 }
 function loadSavedMessages() {
-  for (const m of store.get("messages", []))
-    displayMessage(m.sender, m.text, true);
+  for (const m of store.get("messages")) displayMsg(m.sender, m.text, true);
 }
 
 /* ---------- Microphone ---------- */
 async function handleMicToggle() {
   if (UI.mic.checked) {
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (conn) call = peer.call(conn.peer, localStream);
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      for (const id of connections.keys())
+        if (connections.get(id).open) peer.call(id, localStream);
     } catch (e) {
       console.error(e);
       UI.mic.checked = false;
     }
   } else {
     localStream?.getTracks().forEach((t) => t.stop());
-    call?.close();
   }
 }
 
@@ -179,12 +274,12 @@ async function handleMicToggle() {
 async function aiRespond(q) {
   const pipe = await loadGenerator();
   const [{ generated_text }] = await pipe(q, { max_new_tokens: 100 });
-  displayMessage("AI", generated_text);
-  conn?.send(`AI: ${generated_text}`);
+  await displayMsg("AI", generated_text);
+  for (const c of connections.values())
+    if (c.open) c.send(`AI: ${generated_text}`);
 }
-function loadGenerator() {
-  return generator ? Promise.resolve(generator) : loadModel("generator");
-}
+const loadGenerator = () =>
+  generator ? Promise.resolve(generator) : loadModel("generator");
 
 /* ---------- Translation ---------- */
 const langMap = {
@@ -213,12 +308,12 @@ function loadTranslator() {
 }
 
 async function loadModel(type) {
-  UI.loading.hidden = false;
+  UI.load.hidden = false;
   const model =
     type === "translate"
       ? await pipeline("translation", "Xenova/nllb-200-distilled-600M")
       : await pipeline("text2text-generation", "Xenova/LaMini-Flan-T5-783M");
-  UI.loading.hidden = true;
+  UI.load.hidden = true;
   if (type === "translate") translator = model;
   else generator = model;
   return model;
@@ -239,13 +334,17 @@ function startTranslationCountdown() {
       UI.translateLbl.textContent = `Start automatic translation in ${sec}s…`;
     } else {
       clearInterval(timer);
-      UI.translateLbl.textContent = enabled ? "Translating…" : "";
+      UI.translate.addEventListener("change", () =>
+        store.set("autoTranslate", UI.translate.checked)
+      );
+      UI.translateLbl.textContent = store.get("autoTranslate", false)
+        ? "Translating…"
+        : "";
       UI.translate.disabled = true;
-      if (enabled) translatePage();
+      if (store.get("autoTranslate", false)) translatePage();
       else UI.translate.style.display = "none";
     }
   }, 1000);
-
   UI.translate.addEventListener("change", () =>
     store.set("autoTranslate", UI.translate.checked)
   );

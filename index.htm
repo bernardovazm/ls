@@ -14,44 +14,37 @@
   <body>
     <main>
       <h1 class="logo">LS</h1>
-
       <h2 id="yourPeerId">Your ID:</h2>
-
-      <label>
-        Other user ID:
-        <input id="peerIdInput" placeholder="Peer ID" />
-      </label>
-
-      <label>
-        Message:
-        <input id="messageInput" placeholder="Type a message" />
-      </label>
-
-      <label><input type="checkbox" id="micCheckbox" /> Microphone</label>
-      <label><input type="checkbox" id="aiCheckbox" /> AI</label>
-
+      <label for="peerIdInput">Other user ID:</label>
+      <input id="peerIdInput" placeholder="Peer ID" />
+      <button id="addUserBtn">Add to list</button>
+      <label for="messageInput">Message:</label>
+      <input id="messageInput" placeholder="Type a message" />
+      <input type="checkbox" id="micCheckbox" />
+      <label for="micCheckbox">Microphone</label>
+      <input type="checkbox" id="aiCheckbox" />
+      <label id="aiLabel" for="aiCheckbox">AI</label>
       <div id="translation">
-        <label>
-          <input type="checkbox" id="translateCheckbox" />
-          <span id="translateLabel">Translate page</span>
-        </label>
+        <input type="checkbox" id="translateCheckbox" />
+        <label id="translateLabel" for="translateCheckbox"
+          >Translate page</label
+        >
       </div>
-
       <div id="loadingIndicator" hidden>
         <div id="spinner"></div>
-        Loading…
+        <span>Loading…</span>
       </div>
-
-      <button id="sendButton">SEND</button>
-
+      <button id="sendButton">Send</button>
+      <h2>User list:</h2>
+      <ul id="userList">
+        <li>No users added.</li>
+      </ul>
       <h2>Received messages:</h2>
       <ul id="receivedMessages">
         <li>No messages yet.</li>
       </ul>
-
       <audio id="remoteAudio" autoplay></audio>
     </main>
-
     <script type="module" src="script.js"></script>
   </body>
 </html>
