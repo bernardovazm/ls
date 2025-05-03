@@ -68,7 +68,10 @@ function createPeer(id) {
       UI.id.textContent = `Your ID: ${id}`;
       res();
     });
-    p.on("error", (e) => console.warn("[Peer error]", e.type || e));
+    p.on("error", (e) => {
+      console.warn("[Peer error]", e.type || e);
+      rej(e);
+    });
     p.on("connection", attachConn);
     p.on("call", (call) => {
       call.answer();
@@ -100,8 +103,10 @@ export async function connect(id) {
     console.warn("[peer] connect undefined", id);
     return;
   }
-
-  conn.once("open", () => attachConn(conn));
+  conn.once("open", () => {
+    attachConn(conn);
+    dispatch("opened", { conn });
+  });
   conn.on("error", () => detach(id));
 }
 
@@ -123,8 +128,9 @@ function update(id, online) {
 }
 
 /* ---------- tiny event bus ---------- */
-const listeners = { message: [], status: [] };
+const listeners = { message: [], status: [], opened: [] };
 export function on(evt, cb) {
+  if (!listeners[evt]) listeners[evt] = [];
   listeners[evt].push(cb);
 }
 function dispatch(evt, data) {
