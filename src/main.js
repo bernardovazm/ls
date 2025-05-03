@@ -6,14 +6,13 @@ import * as tr from "./translation.js";
 import * as audio from "./audio.js";
 
 /* persistent status map */
-const statuses = new Map(); // id → status text
+const statuses = new Map();
 const statusInput = document.querySelector("#statusInput");
 
 (async () => {
   await peerMod.ensurePeer();
   const myId = store.get("peerId");
 
-  /* restore my saved status */
   statusInput.value = store.get("myStatus", "");
   setStatus(myId, statusInput.value);
 
@@ -21,9 +20,8 @@ const statusInput = document.querySelector("#statusInput");
   renderUsers();
   bindEvents(myId);
   tr.startCountdown();
-  broadcastStatus(myId); // send status on page load
+  broadcastStatus(myId);
   setInterval(reconnectLoop, 5_000);
-  // broadcast my status every 10 s so peers stay up‑to‑date
   setInterval(() => broadcastStatus(myId), 10_000);
 })();
 
@@ -77,7 +75,8 @@ function renderUsers() {
 function updateConnDot(id, on) {
   const li = [...UI.uList.children].find((el) => el.textContent.startsWith(id));
   if (li) li.querySelector(".status").textContent = on ? "●" : "○";
-  if (on) sendStatusTo(id); // push my status when a peer comes online
+  if (on) sendStatusTo(id);
+  if (!on) audio.handleAudioFlag(id, false);
 }
 
 /* ---------- event wiring ---------- */
@@ -89,6 +88,18 @@ function bindEvents(myId) {
   statusInput.addEventListener("input", () => broadcastStatus(myId));
 
   peerMod.on("message", ({ from, data }) => {
+    if (data === "AUDIO_ON") {
+      audio.handleAudioFlag(from, true);
+      return;
+    }
+    if (data === "AUDIO_OFF") {
+      audio.handleAudioFlag(from, false);
+      return;
+    }
+    if (typeof data === "string" && data.startsWith("STATUS:")) {
+      setStatus(from, data.slice(7));
+      return;
+    }
     if (typeof data === "string" && data.startsWith("STATUS:")) {
       setStatus(from, data.slice(7));
       return;

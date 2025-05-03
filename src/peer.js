@@ -136,3 +136,7 @@ export function on(evt, cb) {
 function dispatch(evt, data) {
   listeners[evt].forEach((cb) => cb(data));
 }
+
+export function getPeer() {
+  return peer;
+}

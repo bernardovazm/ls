@@ -5,6 +5,7 @@ export const UI = {
   pid: $("#peerIdInput"),
   msg: $("#messageInput"),
   mic: $("#micCheckbox"),
+  micLabel: $("#micLabel"),
   ai: $("#aiCheckbox"),
   tChk: $("#translateCheckbox"),
   tLbl: $("#translateLabel"),
