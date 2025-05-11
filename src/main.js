@@ -19,13 +19,62 @@ const statusInput = document.querySelector("#statusInput");
   setStatus(myId, statusInput.value);
 
   loadSaved();
+  loadIdsFromUrl();
   renderUsers();
   bindEvents(myId);
   tr.startCountdown();
   broadcastStatus(myId);
   setInterval(reconnectLoop, 5_000);
   setInterval(() => broadcastStatus(myId), 10_000);
+  updateUrlWithIds();
 })();
+
+/* ---------- URL ID helpers ---------- */
+function loadIdsFromUrl() {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const idsParam = urlParams.get("ids");
+
+    if (idsParam) {
+      const ids = idsParam
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id);
+      const myId = store.get("peerId");
+      const userList = users();
+      let updated = false;
+
+      for (const id of ids) {
+        if (id !== myId && !userList.includes(id)) {
+          userList.push(id);
+          updated = true;
+
+          peerMod.connect(id);
+        }
+      }
+
+      if (updated) {
+        save(userList);
+      }
+    }
+  } catch (error) {
+    console.error("Error loading IDs from URL:", error);
+  }
+}
+
+function updateUrlWithIds() {
+  try {
+    const userList = users();
+    const myId = store.get("peerId");
+    const allIds = [myId, ...userList.filter((id) => id !== myId)];
+    const idsString = allIds.join(",");
+    const url = new URL(window.location);
+    url.searchParams.set("ids", idsString);
+    window.history.replaceState({}, "", url);
+  } catch (error) {
+    console.error("Error updating URL with IDs:", error);
+  }
+}
 
 /* ---------- status helpers ---------- */
 function setStatus(id, text) {
@@ -61,6 +110,7 @@ function users() {
 }
 function save(u) {
   store.set("userList", u);
+  updateUrlWithIds();
 }
 function renderUsers() {
   const list = users();
@@ -101,10 +151,18 @@ function renderUsers() {
 
         const li = document.createElement("li");
         li.dataset.peerId = id;
+        const removeBtn = document.createElement("span");
+        removeBtn.className = "remove-user";
+        removeBtn.textContent = "×";
+        removeBtn.title = "Remove user";
+        removeBtn.onclick = (e) => {
+          e.stopPropagation();
+          removeUser(id);
+        };
         li.innerHTML = `${id} <span class="status"> ${
           isConnected ? "●" : "○"
         } </span><span class="note"> ${status}</span>`;
-
+        li.appendChild(removeBtn);
         UI.uList.appendChild(li);
       }
     });
@@ -113,11 +171,31 @@ function renderUsers() {
       .map((id) => {
         const on = connections.get(id)?.open;
         const note = statuses.get(id) ?? "";
-        return `<li data-peer-id="${id}">${id} <span class="status"> ${
+        return `<li data-peer-id="${id}"><span class="status"> ${
           on ? "●" : "○"
-        } </span><span class="note"> ${note}</span></li>`;
+        } </span> ${id} <span class="note"> ${note}</span><span class="remove-user" title="Remove user" onclick="(function(e) { e.stopPropagation(); window.removeUser('${id}'); })(event)">×</span></li>`;
       })
       .join("");
+    window.removeUser = removeUser;
+  }
+}
+function removeUser(id) {
+  if (!id) return;
+  if (!confirm(`Remover usuário ${id} da lista?`)) return;
+  try {
+    const userList = users();
+    const index = userList.indexOf(id);
+    if (index !== -1) {
+      userList.splice(index, 1);
+      const conn = peerMod.getConnections().get(id);
+      if (conn) {
+        conn.close();
+      }
+      save(userList);
+      renderUsers();
+    }
+  } catch (error) {
+    console.error("Erro ao remover usuário:", error);
   }
 }
 function updateConnDot(id, on) {
@@ -308,6 +386,7 @@ function makeIdEditable() {
 
         if (result.success) {
           idElement.textContent = newId;
+          updateUrlWithIds();
         } else {
           idElement.textContent = currentId;
           alert(`Erro changing ID: ${result.error}`);
@@ -347,6 +426,7 @@ function handlePeerIdChange(oldId, newId) {
   const updated = peerMod.updatePeerIdInUserList(oldId, newId);
   if (updated) {
     renderUsers();
+    updateUrlWithIds();
     const oldStatus = statuses.get(oldId);
     if (oldStatus) {
       statuses.delete(oldId);
