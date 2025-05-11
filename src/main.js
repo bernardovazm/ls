@@ -14,7 +14,7 @@ const statusInput = document.querySelector("#statusInput");
 (async () => {
   await peerMod.ensurePeer();
   const myId = store.get("peerId");
-
+  UI.id.textContent = myId;
   statusInput.value = store.get("myStatus", "");
   setStatus(myId, statusInput.value);
 
@@ -141,6 +141,7 @@ function bindEvents(myId) {
   UI.mic.addEventListener("change", audio.toggle);
   statusInput.addEventListener("input", () => broadcastStatus(myId));
 
+  makeIdEditable();
   camera.init();
   screen.init();
 
@@ -171,6 +172,15 @@ function bindEvents(myId) {
     }
     if (typeof data === "string" && data.startsWith("STATUS:")) {
       setStatus(from, data.slice(7));
+      return;
+    }
+    if (typeof data === "string" && data.startsWith("ID_CHANGED:")) {
+      const parts = data.split(":");
+      if (parts.length === 3) {
+        const oldId = parts[1];
+        const newId = parts[2];
+        handlePeerIdChange(oldId, newId);
+      }
       return;
     }
     show(from, data);
@@ -265,6 +275,82 @@ function reconnectLoop() {
       if (conn.open && !screen.isSharing(peerId)) {
         screen.shareScreenWithPeer(peerId);
       }
+    }
+  }
+}
+
+function makeIdEditable() {
+  const idElement = UI.id;
+  idElement.addEventListener("focus", () => {
+    const currentId = store.get("peerId", "");
+    idElement.dataset.originalText = idElement.textContent;
+    idElement.setAttribute("contenteditable", "true");
+    idElement.textContent = currentId;
+    idElement.classList.add("editing");
+    const range = document.createRange();
+    range.selectNodeContents(idElement);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  idElement.addEventListener("blur", async () => {
+    const currentId = store.get("peerId", "");
+    const newId = idElement.textContent.trim();
+    idElement.removeAttribute("contenteditable");
+    idElement.classList.remove("editing");
+    if (newId !== currentId && newId.length >= 1) {
+      const loadingIndicator = document.createElement("span");
+      loadingIndicator.className = "loading-indicator";
+      idElement.textContent = idElement.dataset.originalText || currentId;
+      idElement.appendChild(loadingIndicator);
+      try {
+        const result = await peerMod.changeId(newId);
+
+        if (result.success) {
+          idElement.textContent = newId;
+        } else {
+          idElement.textContent = currentId;
+          alert(`Erro changing ID: ${result.error}`);
+        }
+      } catch (error) {
+        console.error("Erro ao mudar ID:", error);
+        idElement.textContent = currentId;
+        alert("Error while changing ID.");
+      } finally {
+        if (idElement.querySelector(".loading-indicator")) {
+          idElement.removeChild(idElement.querySelector(".loading-indicator"));
+        }
+      }
+    } else if (newId.length < 1 && newId !== currentId) {
+      idElement.textContent = idElement.dataset.originalText || currentId;
+    }
+  });
+
+  idElement.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      idElement.blur();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      idElement.textContent =
+        idElement.dataset.originalText || store.get("peerId", "");
+      idElement.removeAttribute("contenteditable");
+      idElement.classList.remove("editing");
+      e.stopPropagation();
+    }
+  });
+}
+
+function handlePeerIdChange(oldId, newId) {
+  console.log(`Peer ID changed: ${oldId} -> ${newId}`);
+  const updated = peerMod.updatePeerIdInUserList(oldId, newId);
+  if (updated) {
+    renderUsers();
+    const oldStatus = statuses.get(oldId);
+    if (oldStatus) {
+      statuses.delete(oldId);
+      setStatus(newId, oldStatus);
     }
   }
 }

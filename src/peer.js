@@ -18,6 +18,67 @@ export function getConnections() {
   return connections;
 }
 
+export async function changeId(newId) {
+  if (!newId || newId === peer?.id)
+    return { success: false, error: "ID já está em uso ou é inválido" };
+
+  try {
+    const existingConnections = new Map(connections);
+    const existingPeerId = peer?.id;
+
+    if (await tryId(newId)) {
+      store.set("peerId", newId);
+
+      for (const [oldPeerId, oldConn] of existingConnections.entries()) {
+        if (oldConn.open) {
+          oldConn.send(`ID_CHANGED:${existingPeerId}:${newId}`);
+
+          setTimeout(() => {
+            connect(oldPeerId);
+          }, 500);
+        }
+      }
+
+      return { success: true };
+    } else {
+      return { success: false, error: "ID não disponível" };
+    }
+  } catch (error) {
+    console.error("Erro ao mudar ID:", error);
+    return {
+      success: false,
+      error: "Erro ao tentar mudar o ID: " + (error.message || error),
+    };
+  }
+}
+
+export function updatePeerIdInUserList(oldId, newId) {
+  if (!oldId || !newId) return false;
+
+  try {
+    const userList = store.get("userList", []);
+    const index = userList.indexOf(oldId);
+
+    if (index !== -1) {
+      userList[index] = newId;
+      store.set("userList", userList);
+
+      const oldConn = connections.get(oldId);
+      if (oldConn) {
+        detach(oldId);
+        connect(newId);
+      }
+
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Erro ao atualizar ID na lista:", error);
+    return false;
+  }
+}
+
 async function bootstrap() {
   if (booting) return peerReady;
   booting = true;
@@ -65,7 +126,7 @@ function createPeer(id) {
     peer = p;
 
     p.once("open", () => {
-      UI.id.textContent = `Your ID: ${id}`;
+      UI.id.textContent = id;
       res();
     });
     p.on("error", (e) => {
@@ -155,7 +216,6 @@ export function getPeer() {
   return peer;
 }
 
-// Video call handling
 export function callPeer(peerId, stream, metadata = {}) {
   if (!peer || !stream) return null;
   try {

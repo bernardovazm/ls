@@ -8,7 +8,6 @@ export function init() {
   UI.screen.addEventListener("change", toggleScreen);
 }
 
-// Alternar compartilhamento de tela
 async function toggleScreen() {
   if (UI.screen.checked) {
     await startScreenShare();
@@ -17,12 +16,10 @@ async function toggleScreen() {
   }
 }
 
-// Iniciar compartilhamento de tela
 async function startScreenShare() {
   try {
     UI.loading.removeAttribute("hidden");
 
-    // Obter stream de compartilhamento de tela
     screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         cursor: "always",
@@ -30,17 +27,13 @@ async function startScreenShare() {
       audio: false,
     });
 
-    // Exibir a tela compartilhada localmente
     UI.screenVideo.srcObject = screenStream;
     UI.screenContainer.removeAttribute("hidden");
 
-    // Enviar para peers conectados
     shareScreenWithPeers();
 
-    // Avisar outros usuários que estamos compartilhando tela
     broadcastScreenStatus(true);
 
-    // Adicionar listener para quando o usuário parar o compartilhamento pelo navegador
     screenStream.getVideoTracks()[0].addEventListener("ended", () => {
       UI.screen.checked = false;
       stopScreenShare();
@@ -52,32 +45,26 @@ async function startScreenShare() {
     UI.screen.checked = false;
     UI.loading.setAttribute("hidden", "");
 
-    // Se o usuário cancelar o diálogo, isso não é um erro real
     if (error.name !== "NotAllowedError" && error.name !== "AbortError") {
       alert("Falha ao compartilhar tela. Por favor, tente novamente.");
     }
   }
 }
 
-// Parar compartilhamento de tela
 function stopScreenShare() {
   if (screenStream) {
     screenStream.getTracks().forEach((track) => track.stop());
     screenStream = null;
   }
 
-  // Limpar o vídeo local
   UI.screenVideo.srcObject = null;
   UI.screenContainer.setAttribute("hidden", "");
 
-  // Parar de compartilhar com peers
   stopSharingScreenWithPeers();
 
-  // Avisar outros usuários que paramos de compartilhar tela
   broadcastScreenStatus(false);
 }
 
-// Compartilhar tela com todos os peers conectados
 function shareScreenWithPeers() {
   if (!screenStream) return;
 
@@ -88,17 +75,14 @@ function shareScreenWithPeers() {
   }
 }
 
-// Compartilhar tela com um peer específico
 export function shareScreenWithPeer(peerId) {
   if (!screenStream || !peerId) return null;
 
   const conn = peerMod.getConnections().get(peerId);
   if (!conn?.open) return null;
 
-  // Enviar sinal de que estamos compartilhando tela
   conn.send("SCREEN_ON");
 
-  // Fazer uma chamada de vídeo com a stream da tela
   const call = peerMod.callPeer(peerId, screenStream, { type: "screen" });
   if (call) {
     screenSenders.set(peerId, call);
@@ -108,7 +92,6 @@ export function shareScreenWithPeer(peerId) {
   return null;
 }
 
-// Parar de compartilhar tela com todos os peers
 function stopSharingScreenWithPeers() {
   for (const call of screenSenders.values()) {
     call.close();
@@ -116,7 +99,6 @@ function stopSharingScreenWithPeers() {
   screenSenders.clear();
 }
 
-// Enviar status de compartilhamento de tela para todos os peers
 function broadcastScreenStatus(enabled) {
   for (const conn of peerMod.getConnections().values()) {
     if (conn.open) {
@@ -125,7 +107,6 @@ function broadcastScreenStatus(enabled) {
   }
 }
 
-// Tratar chamada de compartilhamento de tela recebida
 export function handleScreenCall(call, peerId) {
   call.answer();
   call.on("stream", (stream) => {
@@ -133,19 +114,16 @@ export function handleScreenCall(call, peerId) {
   });
 }
 
-// Adicionar tela remota à lista de usuários
 function addRemoteScreen(peerId, stream) {
   const userItem = [...UI.uList.children].find(
     (el) => el.dataset.peerId === peerId || el.textContent.startsWith(peerId)
   );
   if (!userItem) return;
 
-  // Garantir que o elemento tenha o atributo de dados
   if (!userItem.dataset.peerId) {
     userItem.dataset.peerId = peerId;
   }
 
-  // Verificar se o contêiner da tela já existe
   let screenContainer = userItem.querySelector(".remote-screen-container");
 
   if (!screenContainer) {
@@ -161,21 +139,16 @@ function addRemoteScreen(peerId, stream) {
 
   const video = screenContainer.querySelector("video");
 
-  // Definir a stream apenas se for diferente
   if (video.srcObject !== stream) {
     video.srcObject = stream;
 
-    // Armazenar a stream para recuperação posterior
     activeScreenStreams.set(peerId, stream);
 
-    // Adicionar event listeners para gerenciar o status do vídeo
     video.addEventListener("loadedmetadata", () => {
-      // Vídeo está pronto para reprodução
       screenContainer.classList.add("active");
     });
 
     video.addEventListener("ended", () => {
-      // Stream de vídeo terminou
       removeRemoteScreen(peerId);
       activeScreenStreams.delete(peerId);
     });
@@ -184,7 +157,6 @@ function addRemoteScreen(peerId, stream) {
   return screenContainer;
 }
 
-// Remover tela remota
 export function removeRemoteScreen(peerId) {
   const userItem = [...UI.uList.children].find(
     (el) => el.dataset.peerId === peerId || el.textContent.startsWith(peerId)
@@ -199,7 +171,6 @@ export function removeRemoteScreen(peerId) {
   activeScreenStreams.delete(peerId);
 }
 
-// Tratar mensagem de status de compartilhamento de tela
 export function handleScreenStatus(peerId, enabled) {
   const userItem = [...UI.uList.children].find(
     (el) => el.dataset.peerId === peerId || el.textContent.startsWith(peerId)
@@ -211,12 +182,10 @@ export function handleScreenStatus(peerId, enabled) {
   }
 }
 
-// Verificar se já estamos compartilhando tela com um peer específico
 export function isSharing(peerId) {
   return screenSenders.has(peerId);
 }
 
-// Recuperar telas perdidas após atualizações da lista
 export function recoverScreens() {
   activeScreenStreams.forEach((stream, peerId) => {
     if (stream.active) {

@@ -14,7 +14,9 @@
   <body>
     <main>
       <h1 class="logo">LS</h1>
-      <h2 id="yourPeerId">Your ID:</h2>
+      <h2 class="id-container">
+        Your ID: <span id="yourPeerId" class="editable-id" tabindex="0"></span>
+      </h2>
       <label for="peerIdInput">Other user ID:</label>
       <input id="peerIdInput" placeholder="Peer ID" />
       <button id="addUserBtn">Add to list</button>

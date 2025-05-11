@@ -203,3 +203,53 @@ li {
 li .remote-video-container.active {
   border: 1px solid var(--accent);
 }
+
+.id-container {
+  margin-bottom: 10px;
+}
+.editable-id {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--accent);
+  padding-bottom: 2px;
+  transition: all 0.3s ease;
+  outline: none;
+  font-weight: normal;
+}
+
+.editable-id:hover {
+  border-bottom: 1px solid var(--accent);
+}
+
+.editable-id:focus {
+  border-bottom: 1px solid var(--accent);
+  background-color: rgba(127, 255, 212, 0.1);
+  padding: 4px;
+  border-radius: 3px;
+}
+.editable-id:hover:after {
+  opacity: 0.7;
+}
+
+.editable-id.editing {
+  background-color: rgba(127, 255, 212, 0.2);
+  border-bottom: 1px solid var(--accent);
+  padding: 4px;
+  border-radius: 3px;
+}
+
+.editable-id.editing:after {
+  display: none;
+}
+
+.loading-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 8px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+}
