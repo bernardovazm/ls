@@ -78,6 +78,8 @@ function createPeer(id) {
 
       if (callType === "video") {
         dispatch("videocall", { call, from: call.peer });
+      } else if (callType === "screen") {
+        dispatch("screencall", { call, from: call.peer });
       } else {
         call.answer();
         call.on("stream", (s) => (UI.audio.srcObject = s));
@@ -134,7 +136,13 @@ function update(id, online) {
 }
 
 /* ---------- tiny event bus ---------- */
-const listeners = { message: [], status: [], opened: [], videocall: [] };
+const listeners = {
+  message: [],
+  status: [],
+  opened: [],
+  videocall: [],
+  screencall: [],
+};
 export function on(evt, cb) {
   if (!listeners[evt]) listeners[evt] = [];
   listeners[evt].push(cb);

@@ -5,6 +5,7 @@ import * as ai from "./ai.js";
 import * as tr from "./translation.js";
 import * as audio from "./audio.js";
 import * as camera from "./camera.js";
+import * as screen from "./screen.js";
 
 /* persistent status map */
 const statuses = new Map();
@@ -128,6 +129,7 @@ function updateConnDot(id, on) {
   if (!on) {
     audio.handleAudioFlag(id, false);
     camera.removeRemoteVideo(id);
+    screen.removeRemoteScreen(id);
   }
 }
 
@@ -140,6 +142,8 @@ function bindEvents(myId) {
   statusInput.addEventListener("input", () => broadcastStatus(myId));
 
   camera.init();
+  screen.init();
+
   peerMod.on("message", ({ from, data }) => {
     if (data === "AUDIO_ON") {
       audio.handleAudioFlag(from, true);
@@ -157,6 +161,14 @@ function bindEvents(myId) {
       camera.handleVideoStatus(from, false);
       return;
     }
+    if (data === "SCREEN_ON") {
+      screen.handleScreenStatus(from, true);
+      return;
+    }
+    if (data === "SCREEN_OFF") {
+      screen.handleScreenStatus(from, false);
+      return;
+    }
     if (typeof data === "string" && data.startsWith("STATUS:")) {
       setStatus(from, data.slice(7));
       return;
@@ -168,10 +180,17 @@ function bindEvents(myId) {
     camera.handleVideoCall(call, from);
   });
 
+  peerMod.on("screencall", ({ call, from }) => {
+    screen.handleScreenCall(call, from);
+  });
+
   peerMod.on("opened", ({ conn }) => {
     sendStatusTo(conn.peer);
     if (UI.camera.checked) {
       camera.shareVideoWithPeer(conn.peer);
+    }
+    if (UI.screen.checked) {
+      screen.shareScreenWithPeer(conn.peer);
     }
   });
 
@@ -231,10 +250,20 @@ function reconnectLoop() {
     if (!peerMod.getConnections().get(id)?.open) peerMod.connect(id);
   renderUsers();
   camera.recoverVideos();
+  screen.recoverScreens();
+
   if (UI.camera.checked) {
     for (const [peerId, conn] of peerMod.getConnections().entries()) {
       if (conn.open && !camera.isSharing(peerId)) {
         camera.shareVideoWithPeer(peerId);
+      }
+    }
+  }
+
+  if (UI.screen.checked) {
+    for (const [peerId, conn] of peerMod.getConnections().entries()) {
+      if (conn.open && !screen.isSharing(peerId)) {
+        screen.shareScreenWithPeer(peerId);
       }
     }
   }
