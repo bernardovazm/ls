@@ -4,6 +4,7 @@ import * as peerMod from "./peer.js";
 import * as ai from "./ai.js";
 import * as tr from "./translation.js";
 import * as audio from "./audio.js";
+import * as camera from "./camera.js";
 
 /* persistent status map */
 const statuses = new Map();
@@ -28,7 +29,9 @@ const statusInput = document.querySelector("#statusInput");
 /* ---------- status helpers ---------- */
 function setStatus(id, text) {
   statuses.set(id, text);
-  const li = [...UI.uList.children].find((el) => el.textContent.startsWith(id));
+  const li = [...UI.uList.children].find(
+    (el) => el.dataset.peerId === id || el.textContent.startsWith(id)
+  );
   if (li) {
     let span = li.querySelector(".note");
     if (!span) {
@@ -60,23 +63,72 @@ function save(u) {
 }
 function renderUsers() {
   const list = users();
-  UI.uList.innerHTML = list.length
-    ? list
-        .map((id) => {
-          const on = peerMod.getConnections().get(id)?.open;
-          const note = statuses.get(id) ?? "";
-          return `<li>${id} <span class="status"> ${
-            on ? "●" : "○"
-          } </span><span class="note"> ${note}</span></li>`;
-        })
-        .join("")
-    : "<li>No users added.</li>";
+  const connections = peerMod.getConnections();
+
+  if (!list.length) {
+    UI.uList.innerHTML = "<li>No users added.</li>";
+    return;
+  }
+  if (
+    UI.uList.children.length > 0 &&
+    UI.uList.children[0].textContent !== "No users added."
+  ) {
+    const existingIds = new Set();
+    [...UI.uList.children].forEach((li) => {
+      const id = li.dataset.peerId || li.textContent.split(" ")[0];
+      existingIds.add(id);
+      if (list.includes(id)) {
+        const statusDot = li.querySelector(".status");
+        const noteSpan = li.querySelector(".note");
+        const isConnected = connections.get(id)?.open;
+        if (statusDot) {
+          statusDot.textContent = isConnected ? " ● " : " ○ ";
+        }
+        const currentStatus = statuses.get(id) ?? "";
+        if (noteSpan && noteSpan.textContent !== currentStatus) {
+          noteSpan.textContent = currentStatus;
+        }
+      } else {
+        UI.uList.removeChild(li);
+      }
+    });
+
+    list.forEach((id) => {
+      if (!existingIds.has(id)) {
+        const isConnected = connections.get(id)?.open;
+        const status = statuses.get(id) ?? "";
+
+        const li = document.createElement("li");
+        li.dataset.peerId = id;
+        li.innerHTML = `${id} <span class="status"> ${
+          isConnected ? "●" : "○"
+        } </span><span class="note"> ${status}</span>`;
+
+        UI.uList.appendChild(li);
+      }
+    });
+  } else {
+    UI.uList.innerHTML = list
+      .map((id) => {
+        const on = connections.get(id)?.open;
+        const note = statuses.get(id) ?? "";
+        return `<li data-peer-id="${id}">${id} <span class="status"> ${
+          on ? "●" : "○"
+        } </span><span class="note"> ${note}</span></li>`;
+      })
+      .join("");
+  }
 }
 function updateConnDot(id, on) {
-  const li = [...UI.uList.children].find((el) => el.textContent.startsWith(id));
-  if (li) li.querySelector(".status").textContent = on ? "●" : "○";
+  const li = [...UI.uList.children].find(
+    (el) => el.dataset.peerId === id || el.textContent.startsWith(id)
+  );
+  if (li) li.querySelector(".status").textContent = on ? " ● " : " ○ ";
   if (on) sendStatusTo(id);
-  if (!on) audio.handleAudioFlag(id, false);
+  if (!on) {
+    audio.handleAudioFlag(id, false);
+    camera.removeRemoteVideo(id);
+  }
 }
 
 /* ---------- event wiring ---------- */
@@ -87,6 +139,7 @@ function bindEvents(myId) {
   UI.mic.addEventListener("change", audio.toggle);
   statusInput.addEventListener("input", () => broadcastStatus(myId));
 
+  camera.init();
   peerMod.on("message", ({ from, data }) => {
     if (data === "AUDIO_ON") {
       audio.handleAudioFlag(from, true);
@@ -96,8 +149,12 @@ function bindEvents(myId) {
       audio.handleAudioFlag(from, false);
       return;
     }
-    if (typeof data === "string" && data.startsWith("STATUS:")) {
-      setStatus(from, data.slice(7));
+    if (data === "VIDEO_ON") {
+      camera.handleVideoStatus(from, true);
+      return;
+    }
+    if (data === "VIDEO_OFF") {
+      camera.handleVideoStatus(from, false);
       return;
     }
     if (typeof data === "string" && data.startsWith("STATUS:")) {
@@ -106,6 +163,18 @@ function bindEvents(myId) {
     }
     show(from, data);
   });
+
+  peerMod.on("videocall", ({ call, from }) => {
+    camera.handleVideoCall(call, from);
+  });
+
+  peerMod.on("opened", ({ conn }) => {
+    sendStatusTo(conn.peer);
+    if (UI.camera.checked) {
+      camera.shareVideoWithPeer(conn.peer);
+    }
+  });
+
   peerMod.on("status", ({ id, online }) => updateConnDot(id, online));
 }
 
@@ -161,4 +230,12 @@ function reconnectLoop() {
   for (const id of users())
     if (!peerMod.getConnections().get(id)?.open) peerMod.connect(id);
   renderUsers();
+  camera.recoverVideos();
+  if (UI.camera.checked) {
+    for (const [peerId, conn] of peerMod.getConnections().entries()) {
+      if (conn.open && !camera.isSharing(peerId)) {
+        camera.shareVideoWithPeer(peerId);
+      }
+    }
+  }
 }

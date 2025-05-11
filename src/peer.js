@@ -74,8 +74,14 @@ function createPeer(id) {
     });
     p.on("connection", attachConn);
     p.on("call", (call) => {
-      call.answer();
-      call.on("stream", (s) => (UI.audio.srcObject = s));
+      const callType = call.metadata?.type || "audio";
+
+      if (callType === "video") {
+        dispatch("videocall", { call, from: call.peer });
+      } else {
+        call.answer();
+        call.on("stream", (s) => (UI.audio.srcObject = s));
+      }
     });
   });
 }
@@ -128,7 +134,7 @@ function update(id, online) {
 }
 
 /* ---------- tiny event bus ---------- */
-const listeners = { message: [], status: [], opened: [] };
+const listeners = { message: [], status: [], opened: [], videocall: [] };
 export function on(evt, cb) {
   if (!listeners[evt]) listeners[evt] = [];
   listeners[evt].push(cb);
@@ -139,4 +145,16 @@ function dispatch(evt, data) {
 
 export function getPeer() {
   return peer;
+}
+
+// Video call handling
+export function callPeer(peerId, stream, metadata = {}) {
+  if (!peer || !stream) return null;
+  try {
+    const call = peer.call(peerId, stream, { metadata });
+    return call;
+  } catch (e) {
+    console.warn("[peer] call error:", e);
+    return null;
+  }
 }

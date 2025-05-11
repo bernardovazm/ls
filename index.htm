@@ -26,6 +26,16 @@
         id="micCheckbox"
       />
       <label id="micLabel" for="micCheckbox">Microphone</label>
+      <input type="checkbox" id="cameraCheckbox" />
+      <label id="cameraLabel" for="cameraCheckbox">Camera</label>
+      <div id="cameraOptions" hidden>
+        <select id="cameraSelect">
+          <option value="" disabled selected>Choose a device</option>
+        </select>
+      </div>
+      <div id="localVideoContainer" hidden>
+        <video id="localVideo" autoplay muted playsinline></video>
+      </div>
       <input type="checkbox" id="aiCheckbox" />
       <label id="aiLabel" for="aiCheckbox">AI</label>
       <div id="translation">
