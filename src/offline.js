@@ -1,4 +1,5 @@
 import { store } from "./storage.js";
+import { sanitizeText } from "./sanitize.js";
 
 const INBOX_URL_KEY = "inboxUrl";
 
@@ -34,10 +35,13 @@ export async function sendOfflineMessage(
   if (!inboxUrl) return false;
 
   try {
+    // Sanitize message before sending to inbox
+    const sanitizedMessage = sanitizeText(message);
+
     const payload = {
       to: recipientId,
       from: senderId,
-      message: message,
+      message: sanitizedMessage,
       timestamp: Date.now(),
     };
 
@@ -153,6 +157,10 @@ async function processInboxData(response) {
           result.peers.push(item);
         } else if (typeof item === "object" && item !== null) {
           if (item.to && item.from && item.message) {
+            // Sanitize messages as they come in
+            if (item.message && typeof item.message === "string") {
+              item.message = sanitizeText(item.message);
+            }
             result.messages.push(item);
           }
         }
@@ -163,7 +171,13 @@ async function processInboxData(response) {
       }
 
       if (Array.isArray(data.messages)) {
-        result.messages = data.messages;
+        // Sanitize all messages in the array
+        result.messages = data.messages.map((msg) => {
+          if (msg.message && typeof msg.message === "string") {
+            return { ...msg, message: sanitizeText(msg.message) };
+          }
+          return msg;
+        });
       }
     }
   } catch (error) {

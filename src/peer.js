@@ -1,6 +1,7 @@
 import { Peer } from "https://esm.sh/peerjs@1.5.4?bundle-deps";
 import { UI } from "./ui.js";
 import { store } from "./storage.js";
+import { sanitizeText } from "./sanitize.js";
 
 let peer = null;
 let peerReady = Promise.resolve();
@@ -192,7 +193,17 @@ export async function connect(id) {
 function attachConn(conn) {
   connections.set(conn.peer, conn);
   update(conn.peer, true);
-  conn.on("data", (d) => dispatch("message", { from: conn.peer, data: d }));
+  conn.on("data", (d) => {
+    // Sanitize incoming data if it's a string
+    if (typeof d === "string") {
+      d = sanitizeText(d);
+    } else if (d && typeof d === "object" && d.type && d.message) {
+      // If it's an object with a message field, sanitize that field
+      d.message = sanitizeText(d.message);
+    }
+
+    dispatch("message", { from: conn.peer, data: d });
+  });
   conn.on("close", () => detach(conn.peer));
 }
 

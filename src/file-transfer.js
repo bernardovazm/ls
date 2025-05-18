@@ -1,5 +1,6 @@
 import { UI } from "./ui.js";
 import * as peerMod from "./peer.js";
+import { sanitizeText } from "./sanitize.js";
 
 const CHUNK_SIZE = 64 * 1024;
 
@@ -38,11 +39,15 @@ export function handleFileTransferRequest(from, data) {
 
   const { id, name, size, type } = data.fileInfo;
 
+  // Sanitize file name and type
+  const sanitizedName = sanitizeText(name);
+  const sanitizedType = sanitizeText(type);
+
   incomingFiles.set(id, {
     id,
-    name,
+    name: sanitizedName,
     size,
-    type,
+    type: sanitizedType,
     from,
     progress: 0,
     receivedChunks: 0,
@@ -51,7 +56,7 @@ export function handleFileTransferRequest(from, data) {
     completed: false,
   });
 
-  addFileRequestToUserItem(from, id, name, size);
+  addFileRequestToUserItem(from, id, sanitizedName, size);
 }
 
 function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
@@ -61,10 +66,13 @@ function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
 
   if (!userItem) return;
 
+  // Sanitize file name again for safety
+  const sanitizedFileName = sanitizeText(fileName);
+
   const fileRequestContainer = document.createElement("div");
   fileRequestContainer.className = "file-request-container";
   fileRequestContainer.dataset.transferId = transferId;
-  const fileExtension = fileName.split(".").pop().toLowerCase();
+  const fileExtension = sanitizedFileName.split(".").pop().toLowerCase();
   const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(
     fileExtension
   );
@@ -75,13 +83,15 @@ function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
       </div>
     </div>`
     : "";
+
+  // Use textContent assignment for sanitized content
   fileRequestContainer.innerHTML = `
     <div class="file-info">
       <h4>File received:</h4>
       ${filePreview}
       <div class="file-details">
-        <span class="file-name">${fileName}</span>
-        <span class="file-size">(${formatFileSize(fileSize)})</span>
+        <span class="file-name"></span>
+        <span class="file-size"></span>
       </div>
       <div class="file-progress-container" hidden>
         <div class="progress-bar">
@@ -94,6 +104,13 @@ function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
       </div>
     </div>
   `;
+
+  // Assign sanitized values using textContent for safer rendering
+  const fileNameEl = fileRequestContainer.querySelector(".file-name");
+  fileNameEl.textContent = sanitizedFileName;
+
+  const fileSizeEl = fileRequestContainer.querySelector(".file-size");
+  fileSizeEl.textContent = `(${formatFileSize(fileSize)})`;
 
   const acceptBtn = fileRequestContainer.querySelector(".accept-file-btn");
   const rejectBtn = fileRequestContainer.querySelector(".reject-file-btn");
@@ -315,57 +332,52 @@ function combineChunks(fileData) {
 }
 
 function displayFileDownloadMessage(fileName, url, fileSize, from) {
-  const fileExtension = fileName.split(".").pop().toLowerCase();
-  let fileIcon = "📄";
+  // Sanitize file name
+  const sanitizedFileName = sanitizeText(fileName);
 
-  const iconMap = {
-    pdf: "📕",
-    doc: "📘",
-    docx: "📘",
-    xls: "📗",
-    xlsx: "📗",
-    jpg: "🖼️",
-    jpeg: "🖼️",
-    png: "🖼️",
-    gif: "🖼️",
-    mp3: "🎵",
-    wav: "🎵",
-    mp4: "🎬",
-    avi: "🎬",
-    mov: "🎬",
-    zip: "🗜️",
-    rar: "🗜️",
-  };
+  // Sanitize the source of the message
+  const sanitizedFrom = sanitizeText(from);
 
-  if (iconMap[fileExtension]) {
-    fileIcon = iconMap[fileExtension];
-  }
-  const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(
-    fileExtension
-  );
-  let imagePreview = "";
+  // Create message li element
+  const li = document.createElement("li");
 
-  if (isImage) {
-    imagePreview = `<div class="chat-image-preview"><img src="${url}" alt="Preview" class="chat-image"></div>`;
-  }
-  const fileMessage = `
-    <div class="file-message">
-      <span class="file-icon">${fileIcon}</span>
-      <a href="${url}" class="file-download-link" download="${fileName}">${fileName}</a>
-      <span class="file-size">(${formatFileSize(fileSize)})</span>
-      ${imagePreview}
-    </div>
-  `;
-
+  // Add timestamp
+  const timeSpan = document.createElement("small");
   const t = new Date().toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+  timeSpan.textContent = `[${t}]`;
+  li.appendChild(timeSpan);
 
-  UI.msgs.insertAdjacentHTML(
-    "afterbegin",
-    `<li><small>[${t}]</small> <strong>${from}:</strong> ${fileMessage}</li>`
-  );
+  // Add sender info
+  const senderSpan = document.createElement("strong");
+  senderSpan.textContent = `${sanitizedFrom}:`;
+  li.appendChild(document.createTextNode(" "));
+  li.appendChild(senderSpan);
+
+  // Add message text
+  const msgSpan = document.createElement("span");
+  li.appendChild(document.createTextNode(" "));
+  li.appendChild(msgSpan);
+
+  // Create download link
+  const downloadLink = document.createElement("a");
+  downloadLink.href = url;
+  downloadLink.download = sanitizedFileName;
+  downloadLink.textContent = `Download file: ${sanitizedFileName} (${formatFileSize(
+    fileSize
+  )})`;
+
+  // Add to message
+  msgSpan.appendChild(downloadLink);
+
+  // Insert at the beginning
+  if (UI.msgs.firstElementChild?.textContent.startsWith("No")) {
+    UI.msgs.innerHTML = "";
+  }
+
+  UI.msgs.insertAdjacentElement("afterbegin", li);
 }
 
 function sendToPeer(peerId, data) {

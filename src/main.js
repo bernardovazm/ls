@@ -9,6 +9,7 @@ import * as screen from "./screen.js";
 import * as fileTransfer from "./file-transfer.js";
 import * as offline from "./offline.js";
 import * as reset from "./reset.js";
+import { sanitizeText, safeInsertHTML } from "./sanitize.js";
 
 const statuses = new Map();
 const statusInput = document.querySelector("#statusInput");
@@ -123,7 +124,8 @@ function updateUrlWithIds() {
 
 /* ---------- status helpers ---------- */
 function setStatus(id, text) {
-  statuses.set(id, text);
+  const sanitizedText = sanitizeText(text);
+  statuses.set(id, sanitizedText);
   const li = [...UI.uList.children].find(
     (el) => el.dataset.peerId === id || el.textContent.startsWith(id)
   );
@@ -134,7 +136,7 @@ function setStatus(id, text) {
       span.className = "note";
       li.appendChild(span);
     }
-    span.textContent = text;
+    span.textContent = sanitizedText;
   }
 }
 function broadcastStatus(myId) {
@@ -543,7 +545,7 @@ async function registerIdInInbox(id, inboxUrl) {
 }
 /* ---------- messaging ---------- */
 async function onSend() {
-  const txt = UI.msg.value.trim();
+  let txt = UI.msg.value.trim();
   const fileInput = UI.selectFileBtn;
 
   if (fileInput.files && fileInput.files.length > 0) {
@@ -553,6 +555,9 @@ async function onSend() {
   }
 
   if (!txt) return;
+
+  txt = sanitizeText(txt);
+
   const connectedPeers = [...peerMod.getConnections().entries()]
     .filter(([_, conn]) => conn.open)
     .map(([id, _]) => id);
@@ -602,7 +607,7 @@ async function tryOfflineMessages(txt) {
     }
   }
   if (userList.length > 0 && !sentToSomeone) {
-    alert(
+    console.warn(
       "It was not possible to send offline messages. Check if the inbox URLs are configured correctly."
     );
   }
@@ -671,19 +676,30 @@ function sendToPeer(peerId, data) {
 }
 
 async function show(sender, txt, skip = false, isOffline = false) {
+  const sanitizedSender = sanitizeText(sender);
   txt = await tr.translateIfEnabled(txt);
+  const sanitizedText = sanitizeText(txt);
+
   if (UI.msgs.firstElementChild?.textContent.startsWith("No"))
     UI.msgs.innerHTML = "";
+
   const t = new Date().toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+
   const offlineIcon = isOffline ? "📬 " : "";
-  UI.msgs.insertAdjacentHTML(
-    "afterbegin",
-    `<li><small>[${t}]</small> <strong>${offlineIcon}${sender}:</strong> <span>${txt}</span></li>`
-  );
-  if (!skip) saveMsg({ sender, text: txt, time: Date.now(), isOffline });
+
+  const messageHTML = `<li><small>[${t}]</small> <strong>${offlineIcon}${sanitizedSender}:</strong> <span>${sanitizedText}</span></li>`;
+  UI.msgs.insertAdjacentHTML("afterbegin", messageHTML);
+
+  if (!skip)
+    saveMsg({
+      sender: sanitizedSender,
+      text: sanitizedText,
+      time: Date.now(),
+      isOffline,
+    });
 }
 
 /* ---------- persistence ---------- */
