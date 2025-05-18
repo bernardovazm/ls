@@ -41,12 +41,12 @@ async function startScreenShare() {
 
     UI.loading.setAttribute("hidden", "");
   } catch (error) {
-    console.error("Erro ao iniciar compartilhamento de tela:", error);
+    console.error("Error starting screen sharing:", error);
     UI.screen.checked = false;
     UI.loading.setAttribute("hidden", "");
 
     if (error.name !== "NotAllowedError" && error.name !== "AbortError") {
-      alert("Falha ao compartilhar tela. Por favor, tente novamente.");
+      alert("Screen sharing failed, please try again.");
     }
   }
 }

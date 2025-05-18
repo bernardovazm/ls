@@ -638,7 +638,7 @@ function sendToPeer(peerId, data) {
 }
 
 async function show(sender, txt, skip = false, isOffline = false) {
-  txt = await tr.maybeTranslate(txt);
+  txt = await tr.translateIfEnabled(txt);
   if (UI.msgs.firstElementChild?.textContent.startsWith("No"))
     UI.msgs.innerHTML = "";
   const t = new Date().toLocaleTimeString([], {
@@ -883,5 +883,26 @@ async function testInboxConnection() {
   } finally {
     testButton.textContent = originalText;
     testButton.disabled = false;
+  }
+}
+
+/**
+ * @param {Array} peers
+ * @param {string} myId
+ */
+function connectToInboxPeers(peers, myId) {
+  if (!Array.isArray(peers) || peers.length === 0) return;
+  const userList = users();
+  let updated = false;
+  for (const id of peers) {
+    if (id !== myId && !userList.includes(id)) {
+      userList.push(id);
+      updated = true;
+      peerMod.connect(id);
+      console.log(`Trying to connect to inbox peer: ${id}`);
+    }
+  }
+  if (updated) {
+    save(userList);
   }
 }

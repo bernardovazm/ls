@@ -20,7 +20,7 @@ export function getConnections() {
 
 export async function changeId(newId) {
   if (!newId || newId === peer?.id)
-    return { success: false, error: "ID já está em uso ou é inválido" };
+    return { success: false, error: "ID already in use or is invalid" };
 
   try {
     const existingConnections = new Map(connections);
@@ -41,13 +41,13 @@ export async function changeId(newId) {
 
       return { success: true };
     } else {
-      return { success: false, error: "ID não disponível" };
+      return { success: false, error: "ID not available" };
     }
   } catch (error) {
-    console.error("Erro ao mudar ID:", error);
+    console.error("Error changing ID:", error);
     return {
       success: false,
-      error: "Erro ao tentar mudar o ID: " + (error.message || error),
+      error: "Error trying to change ID: " + (error.message || error),
     };
   }
 }
@@ -74,7 +74,7 @@ export function updatePeerIdInUserList(oldId, newId) {
 
     return false;
   } catch (error) {
-    console.error("Erro ao atualizar ID na lista:", error);
+    console.error("Error updating ID in list:", error);
     return false;
   }
 }

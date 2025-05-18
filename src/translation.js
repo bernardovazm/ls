@@ -16,7 +16,7 @@ const tgt = map[navigator.language.slice(0, 2)] ?? "eng_Latn";
 
 let translator;
 
-export async function maybeTranslate(text) {
+export async function translateIfEnabled(text) {
   if (!store.get("autoTranslate", false) || tgt === "eng_Latn") return text;
   translator ??= await pipeline(
     "translation",
@@ -65,7 +65,7 @@ async function translatePage() {
       el.textContent.trim() &&
       el.textContent !== "LS"
     ) {
-      el.textContent = await maybeTranslate(el.textContent);
+      el.textContent = await translateIfEnabled(el.textContent);
     }
   }
 }
