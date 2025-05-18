@@ -14,6 +14,16 @@ export async function ensurePeer() {
   else await peerReady;
 }
 
+export function destroyPeer() {
+  if (peer && !peer.destroyed) {
+    peer.destroy();
+  }
+  peer = null;
+  peerReady = Promise.resolve();
+  connections.clear();
+  lastDial.clear();
+}
+
 export function getConnections() {
   return connections;
 }

@@ -203,3 +203,7 @@ export function recoverVideos() {
     }
   });
 }
+
+export function isActive() {
+  return !!localStream && UI.camera.checked;
+}

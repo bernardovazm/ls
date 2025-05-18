@@ -26,8 +26,10 @@
         </div>
       </div>
       <label for="peerIdInput">Other user ID:</label>
-      <input id="peerIdInput" placeholder="Peer ID" />
-      <button id="addUserBtn">Add to list</button>
+      <div class="input-group">
+        <input id="peerIdInput" placeholder="Peer ID" />
+        <button id="addUserBtn">+</button>
+      </div>
       <label>Status: </label>
       <input id="statusInput" placeholder="Type a status" />
       <label for="messageInput">Message:</label>
@@ -84,9 +86,6 @@
       <div class="modal-content">
         <span class="close-modal">&times;</span>
         <h2>Settings</h2>
-        <button id="shareBtn" class="secondary-btn" title="Compartilhar link">
-          🔗 Share link
-        </button>
         <div class="form-group">
           <label for="inboxUrl">Inbox URL (for offline messages):</label>
           <input
@@ -105,6 +104,12 @@
             URL (https://jsonblob.com/api/jsonBlob/...).
           </p>
         </div>
+        <button id="shareBtn" class="secondary-btn" title="Compartilhar link">
+          🔗 Share link
+        </button>
+        <button id="resetDataBtn" class="secondary-btn">
+          🗑️ Clear All Data
+        </button>
         <button id="saveSettingsBtn" class="primary-btn">Save</button>
       </div>
     </div>

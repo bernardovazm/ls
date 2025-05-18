@@ -42,5 +42,6 @@ export const UI = {
   inboxUrl: $("#inboxUrl"),
   saveSettingsBtn: $("#saveSettingsBtn"),
   testInboxBtn: $("#testInboxBtn"),
+  resetDataBtn: $("#resetDataBtn"),
   closeModal: $(".close-modal"),
 };

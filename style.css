@@ -80,6 +80,19 @@ li {
   position: relative;
   transition: all 0.3s ease;
 }
+.input-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.input-group input {
+  flex: 1;
+}
+.input-group button {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  width: auto;
+}
 .status {
   font-weight: bold;
 }

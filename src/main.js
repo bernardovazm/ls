@@ -8,6 +8,7 @@ import * as camera from "./camera.js";
 import * as screen from "./screen.js";
 import * as fileTransfer from "./file-transfer.js";
 import * as offline from "./offline.js";
+import * as reset from "./reset.js";
 
 const statuses = new Map();
 const statusInput = document.querySelector("#statusInput");
@@ -265,6 +266,7 @@ function bindEvents(myId) {
   UI.saveSettingsBtn?.addEventListener("click", saveSettings);
   UI.closeModal?.addEventListener("click", closeSettingsModal);
   UI.testInboxBtn?.addEventListener("click", testInboxConnection);
+  UI.resetDataBtn?.addEventListener("click", resetAllData);
   UI.mic.addEventListener("change", audio.toggle);
   statusInput.addEventListener("input", () => broadcastStatus(myId));
 
@@ -941,4 +943,18 @@ function connectToInboxPeers(peers, myId) {
   if (updated) {
     save(userList);
   }
+}
+async function resetAllData() {
+  await reset.resetAllData({
+    setStatus,
+    statusInput,
+    statuses,
+    inboxUrls,
+    loadIdsFromUrl,
+    checkInboxParam,
+    renderUsers,
+    updateUrlWithIds,
+    fetchOfflineMessages,
+    closeSettingsModal,
+  });
 }

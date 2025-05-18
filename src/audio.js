@@ -43,3 +43,7 @@ export function handleAudioFlag(id, on) {
     toggle();
   }
 }
+
+export function isActive() {
+  return !!stream && UI.mic.checked;
+}
