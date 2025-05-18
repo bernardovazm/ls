@@ -73,7 +73,16 @@ async function checkInboxParam() {
     UI.inboxUrl.value = inboxUrl;
   } else {
     UI.inboxUrl.value = offline.getInboxUrl();
+
+    // Se tiver um inboxUrl no armazenamento local mas não na URL, atualizar a URL
+    const storedInboxUrl = offline.getInboxUrl();
+    if (storedInboxUrl) {
+      const url = new URL(window.location);
+      url.searchParams.set("inbox", storedInboxUrl);
+      window.history.replaceState({}, "", url);
+    }
   }
+
   const inboxUrlToUse = inboxUrl || offline.getInboxUrl();
   if (inboxUrlToUse) {
     const myId = store.get("peerId");
@@ -93,16 +102,23 @@ function updateUrlWithIds() {
   try {
     const userList = users();
     const myId = store.get("peerId");
-    if (userList.length === 0 && !window.location.search.includes("ids=")) {
+    if (
+      userList.length === 0 &&
+      !window.location.search.includes("ids=") &&
+      !window.location.search.includes("inbox=")
+    ) {
       return;
     }
     const allIds = [myId, ...userList.filter((id) => id !== myId)];
     const idsString = allIds.join(",");
     const url = new URL(window.location);
-    const inboxParam = url.searchParams.get("inbox");
+
+    // Sempre incluir o parâmetro inbox, seja da URL ou do armazenamento local
+    const inboxUrl = url.searchParams.get("inbox") || offline.getInboxUrl();
+
     url.searchParams.set("ids", idsString);
-    if (inboxParam) {
-      url.searchParams.set("inbox", inboxParam);
+    if (inboxUrl) {
+      url.searchParams.set("inbox", inboxUrl);
     }
     window.history.replaceState({}, "", url);
   } catch (error) {
@@ -358,6 +374,13 @@ async function saveSettings() {
   if (inboxUrl !== previousUrl) {
     offline.saveInboxUrl(inboxUrl);
     console.log("New inbox URL saved:", inboxUrl);
+    const url = new URL(window.location);
+    if (inboxUrl) {
+      url.searchParams.set("inbox", inboxUrl);
+    } else {
+      url.searchParams.delete("inbox");
+    }
+    window.history.replaceState({}, "", url);
     updateUrlWithIds();
     if (inboxUrl) {
       try {
@@ -593,7 +616,7 @@ function sendFile(file) {
   } else {
     const userList = activeConnections.map(([id, _]) => id);
     const selectedIndex = prompt(
-      `Selecione o destinatário (1-${userList.length}):\n` +
+      `Select the recipient (1-${userList.length}):\n` +
         userList.map((id, index) => `${index + 1}. ${id}`).join("\n")
     );
 
@@ -722,12 +745,12 @@ function makeIdEditable() {
           updateUrlWithIds();
         } else {
           idElement.textContent = currentId;
-          alert(`Erro ao alterar ID: ${result.error}`);
+          alert(`Error changing ID: ${result.error}`);
         }
       } catch (error) {
-        console.error("Erro ao alterar ID:", error);
+        console.error("Error changing ID:", error);
         idElement.textContent = currentId;
-        alert("Erro ao alterar ID.");
+        alert("Error changing ID.");
       } finally {
         if (idElement.querySelector(".loading-indicator")) {
           idElement.removeChild(idElement.querySelector(".loading-indicator"));
@@ -800,9 +823,15 @@ function handleObjectMessage(from, data) {
 }
 
 function shareLink() {
-  const url = window.location.href;
+  const url = new URL(window.location.href);
   const peerId = UI.id.textContent;
-  const shareUrl = `${url}?id=${peerId}`;
+  url.search = "";
+  url.searchParams.set("ids", peerId);
+  const inboxUrl = offline.getInboxUrl();
+  if (inboxUrl) {
+    url.searchParams.set("inbox", inboxUrl);
+  }
+  const shareUrl = url.toString();
 
   if (navigator.share) {
     navigator
@@ -812,7 +841,7 @@ function shareLink() {
         url: shareUrl,
       })
       .catch((err) => {
-        console.error("Erro ao compartilhar:", err);
+        console.error("Error sharing:", err);
         fallbackShare(shareUrl);
       });
   } else {

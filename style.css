@@ -269,6 +269,7 @@ li .remote-video-container.active {
 }
 
 .remove-user {
+  white-space: nowrap;
   position: absolute;
   right: 10px;
   top: 20px;
@@ -368,8 +369,8 @@ li .remote-video-container.active {
   text-decoration: underline;
 }
 
-/* Botão de compartilhamento */
 .icon-button {
+  white-space: nowrap;
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--accent);
@@ -389,7 +390,6 @@ li .remote-video-container.active {
   background: rgba(127, 255, 212, 0.1);
 }
 
-/* Input de arquivo estilizado */
 .file-input-wrapper {
   display: inline-block;
   position: relative;
@@ -417,7 +417,6 @@ li .remote-video-container.active {
   background: rgba(127, 255, 212, 0.1);
 }
 
-/* Modal de configurações */
 .modal {
   display: none;
   position: fixed;
@@ -473,7 +472,6 @@ li .remote-video-container.active {
 
 .form-group label {
   display: block;
-  margin-bottom: 8px;
   color: var(--accent);
 }
 
@@ -515,7 +513,6 @@ li .remote-video-container.active {
   background-color: var(--accent-hover);
 }
 
-/* Estilo para o contêiner de solicitação de arquivo na lista de usuários */
 .file-request-container {
   margin-top: 10px;
   padding: 10px;
