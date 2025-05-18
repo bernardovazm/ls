@@ -23,10 +23,8 @@
       <label>Status: </label>
       <input id="statusInput" placeholder="Type a status" />
       <label for="messageInput">Message:</label>
-      <input id="messageInput" placeholder="Type a message" /><input
-        type="checkbox"
-        id="micCheckbox"
-      />
+      <input id="messageInput" placeholder="Type a message" />
+      <input type="checkbox" id="micCheckbox" />
       <label id="micLabel" for="micCheckbox">Microphone</label>
       <input type="checkbox" id="cameraCheckbox" />
       <label id="cameraLabel" for="cameraCheckbox">Camera</label>
@@ -35,14 +33,8 @@
           <option value="" disabled selected>Choose a device</option>
         </select>
       </div>
-      <div id="localVideoContainer" hidden>
-        <video id="localVideo" autoplay muted playsinline></video>
-      </div>
       <input type="checkbox" id="screenCheckbox" />
       <label id="screenLabel" for="screenCheckbox">Screen</label>
-      <div id="screenContainer" hidden>
-        <video id="screenVideo" autoplay muted playsinline></video>
-      </div>
       <input type="checkbox" id="aiCheckbox" />
       <label id="aiLabel" for="aiCheckbox">AI</label>
       <div id="translation">
@@ -51,11 +43,18 @@
           >Translate page</label
         >
       </div>
+      <input id="selectFileBtn" type="file" />
       <div id="loadingIndicator" hidden>
         <div id="spinner"></div>
         <span>Loading…</span>
       </div>
       <button id="sendButton">Send</button>
+      <div id="localVideoContainer" hidden>
+        <video id="localVideo" autoplay muted playsinline></video>
+      </div>
+      <div id="screenContainer" hidden>
+        <video id="screenVideo" autoplay muted playsinline></video>
+      </div>
       <h2>User list:</h2>
       <ul id="userList">
         <li>No users added.</li>

@@ -6,6 +6,7 @@ import * as tr from "./translation.js";
 import * as audio from "./audio.js";
 import * as camera from "./camera.js";
 import * as screen from "./screen.js";
+import * as fileTransfer from "./file-transfer.js";
 
 /* persistent status map */
 const statuses = new Map();
@@ -159,9 +160,9 @@ function renderUsers() {
           e.stopPropagation();
           removeUser(id);
         };
-        li.innerHTML = `${id} <span class="status"> ${
+        li.innerHTML = `<span class="status"> ${
           isConnected ? "●" : "○"
-        } </span><span class="note"> ${status}</span>`;
+        } </span> ${id} <span class="note">${status}</span>`;
         li.appendChild(removeBtn);
         UI.uList.appendChild(li);
       }
@@ -216,14 +217,21 @@ function bindEvents(myId) {
   UI.sendBtn.addEventListener("click", onSend);
   UI.msg.addEventListener("keypress", (e) => e.key === "Enter" && onSend());
   UI.addBtn.addEventListener("click", addUser);
+  UI.shareBtn?.addEventListener("click", shareLink);
   UI.mic.addEventListener("change", audio.toggle);
   statusInput.addEventListener("input", () => broadcastStatus(myId));
 
   makeIdEditable();
   camera.init();
   screen.init();
+  fileTransfer.init();
 
   peerMod.on("message", ({ from, data }) => {
+    if (typeof data === "object" && data !== null && data.type) {
+      handleObjectMessage(from, data);
+      return;
+    }
+
     if (data === "AUDIO_ON") {
       audio.handleAudioFlag(from, true);
       return;
@@ -301,12 +309,85 @@ function addUser() {
 /* ---------- messaging ---------- */
 async function onSend() {
   const txt = UI.msg.value.trim();
+  const fileInput = UI.selectFileBtn;
+
+  if (fileInput.files && fileInput.files.length > 0) {
+    sendFile(fileInput.files[0]);
+    fileInput.value = "";
+    return;
+  }
+
   if (!txt) return;
   for (const c of peerMod.getConnections().values()) if (c.open) c.send(txt);
   const out = UI.ai.checked ? await ai.answer(txt) : txt;
   await show("You", out);
   UI.msg.value = "";
 }
+
+function sendFile(file) {
+  const activeConnections = [...peerMod.getConnections().entries()].filter(
+    ([_, conn]) => conn.open
+  );
+
+  if (activeConnections.length === 0) {
+    alert("There are no connected users to send the file.");
+    return;
+  }
+
+  let targetPeerId;
+
+  if (activeConnections.length === 1) {
+    targetPeerId = activeConnections[0][0];
+  } else {
+    const userList = activeConnections.map(([id, _]) => id);
+    const selectedIndex = prompt(
+      `Select the recipient (1-${userList.length}):\n` +
+        userList.map((id, index) => `${index + 1}. ${id}`).join("\n")
+    );
+
+    if (selectedIndex === null) return;
+
+    const index = parseInt(selectedIndex) - 1;
+    if (isNaN(index) || index < 0 || index >= userList.length) {
+      alert("Invalid selection.");
+      return;
+    }
+
+    targetPeerId = userList[index];
+  }
+
+  const transferId = generateTransferId();
+
+  const fileInfo = {
+    id: transferId,
+    name: file.name,
+    type: file.type,
+    size: file.size,
+  };
+
+  fileTransfer.storeOutgoingFile(transferId, file, targetPeerId);
+
+  sendToPeer(targetPeerId, {
+    type: "FILE_TRANSFER_REQUEST",
+    fileInfo,
+  });
+
+  alert(`File transfer request sent to ${targetPeerId}`);
+}
+
+function generateTransferId() {
+  return `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function sendToPeer(peerId, data) {
+  const conn = peerMod.getConnections().get(peerId);
+  if (conn?.open) {
+    conn.send(data);
+    return true;
+  }
+  return false;
+}
+
 async function show(sender, txt, skip = false) {
   txt = await tr.maybeTranslate(txt);
   if (UI.msgs.firstElementChild?.textContent.startsWith("No"))
@@ -389,10 +470,10 @@ function makeIdEditable() {
           updateUrlWithIds();
         } else {
           idElement.textContent = currentId;
-          alert(`Erro changing ID: ${result.error}`);
+          alert(`Error changing ID: ${result.error}`);
         }
       } catch (error) {
-        console.error("Erro ao mudar ID:", error);
+        console.error("Error while changing ID:", error);
         idElement.textContent = currentId;
         alert("Error while changing ID.");
       } finally {
@@ -433,4 +514,84 @@ function handlePeerIdChange(oldId, newId) {
       setStatus(newId, oldStatus);
     }
   }
+}
+
+function handleObjectMessage(from, data) {
+  switch (data.type) {
+    case "FILE_TRANSFER_REQUEST":
+      fileTransfer.handleFileTransferRequest(from, data);
+      break;
+
+    case "FILE_TRANSFER_ACCEPTED":
+      fileTransfer.handleFileTransferAccepted(from, data);
+      break;
+
+    case "FILE_TRANSFER_REJECTED":
+      fileTransfer.handleFileTransferRejected(from, data);
+      break;
+
+    case "FILE_CHUNK":
+      fileTransfer.handleFileChunk(from, data);
+      break;
+
+    case "FILE_TRANSFER_COMPLETE":
+      fileTransfer.handleFileTransferComplete(from, data);
+      break;
+
+    default:
+      console.log("Unknown message received:", data);
+  }
+}
+
+function shareLink() {
+  const url = window.location.href;
+  const peerId = UI.id.textContent;
+  const shareUrl = `${url}?id=${peerId}`;
+
+  if (navigator.share) {
+    navigator
+      .share({
+        title: "LS - Share link",
+        text: "Contact me using this link:",
+        url: shareUrl,
+      })
+      .catch((err) => {
+        console.error("Error sharing:", err);
+        fallbackShare(shareUrl);
+      });
+  } else {
+    fallbackShare(shareUrl);
+  }
+}
+
+function fallbackShare(url) {
+  try {
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        alert("Link copied to clipboard!");
+      })
+      .catch((err) => {
+        console.error("Error copying:", err);
+        promptManualCopy(url);
+      });
+  } catch (err) {
+    promptManualCopy(url);
+  }
+}
+
+function promptManualCopy(url) {
+  const textarea = document.createElement("textarea");
+  textarea.value = url;
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    document.execCommand("copy");
+    alert("Link copied to clipboard!");
+  } catch (err) {
+    alert(`Copy the following link: ${url}`);
+  }
+
+  document.body.removeChild(textarea);
 }

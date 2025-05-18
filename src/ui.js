@@ -24,7 +24,33 @@ export const UI = {
   loading: $("#loadingIndicator"),
   sendBtn: $("#sendButton"),
   addBtn: $("#addUserBtn"),
+  shareBtn: $("#shareBtn"),
   uList: $("#userList"),
   msgs: $("#receivedMessages"),
   audio: $("#remoteAudio"),
+
+  // File transfer elements
+  fileInput: $("#fileInput"),
+  selectFileBtn: $("#selectFileBtn"),
+  fileInfo: $("#fileInfo"),
+  fileName: $("#fileName"),
+  fileSize: $("#fileSize"),
+  sendFileBtn: $("#sendFileBtn"),
+  cancelFileBtn: $("#cancelFileBtn"),
+
+  // Incoming file elements
+  incomingFileContainer: $("#incomingFileContainer"),
+  incomingFileName: $("#incomingFileName"),
+  incomingFileSize: $("#incomingFileSize"),
+  incomingFileProgress: $("#incomingFileProgress"),
+  incomingFileProgressBar: $("#incomingFileProgressBar"),
+  acceptFileBtn: $("#acceptFileBtn"),
+  rejectFileBtn: $("#rejectFileBtn"),
+
+  // Outgoing file elements
+  outgoingFileContainer: $("#outgoingFileContainer"),
+  outgoingFileName: $("#outgoingFileName"),
+  outgoingFileSize: $("#outgoingFileSize"),
+  outgoingFileProgress: $("#outgoingFileProgress"),
+  outgoingFileProgressBar: $("#outgoingFileProgressBar"),
 };
