@@ -73,8 +73,6 @@ async function checkInboxParam() {
     UI.inboxUrl.value = inboxUrl;
   } else {
     UI.inboxUrl.value = offline.getInboxUrl();
-
-    // Se tiver um inboxUrl no armazenamento local mas não na URL, atualizar a URL
     const storedInboxUrl = offline.getInboxUrl();
     if (storedInboxUrl) {
       const url = new URL(window.location);
@@ -82,7 +80,6 @@ async function checkInboxParam() {
       window.history.replaceState({}, "", url);
     }
   }
-
   const inboxUrlToUse = inboxUrl || offline.getInboxUrl();
   if (inboxUrlToUse) {
     const myId = store.get("peerId");
@@ -112,10 +109,7 @@ function updateUrlWithIds() {
     const allIds = [myId, ...userList.filter((id) => id !== myId)];
     const idsString = allIds.join(",");
     const url = new URL(window.location);
-
-    // Sempre incluir o parâmetro inbox, seja da URL ou do armazenamento local
     const inboxUrl = url.searchParams.get("inbox") || offline.getInboxUrl();
-
     url.searchParams.set("ids", idsString);
     if (inboxUrl) {
       url.searchParams.set("inbox", inboxUrl);
@@ -425,16 +419,30 @@ async function fetchOfflineMessages(myId) {
 
   try {
     const messages = await offline.fetchOfflineMessages(inboxUrl, myId);
-
+    console.log(
+      `Received ${
+        messages?.length || 0
+      } offline messages from inbox (filtered by recipient: ${myId})`
+    );
     if (messages && messages.length > 0) {
       for (const msg of messages) {
-        if (msg.from && msg.message && msg.timestamp) {
+        if (msg.from && msg.message && msg.timestamp && msg.to === myId) {
           const time = new Date(msg.timestamp).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           });
-
+          console.log(
+            `Displaying offline message from ${msg.from} (time: ${time})`
+          );
           await show(msg.from, msg.message, false, true);
+        } else {
+          console.warn(
+            `Ignoring message that does not meet the criteria: from=${
+              msg.from
+            }, to=${
+              msg.to
+            }, message present=${!!msg.message}, timestamp present=${!!msg.timestamp}`
+          );
         }
       }
     }
@@ -832,7 +840,6 @@ function shareLink() {
     url.searchParams.set("inbox", inboxUrl);
   }
   const shareUrl = url.toString();
-
   if (navigator.share) {
     navigator
       .share({
