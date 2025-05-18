@@ -6,8 +6,14 @@ const CHUNK_SIZE = 64 * 1024;
 const incomingFiles = new Map();
 const outgoingFiles = new Map();
 
-export function init() {}
+export function init() {
+  // Não precisamos mais dos event listeners para seleção e envio de arquivos
+  // pois agora usamos o botão de envio de mensagens
+  // Mantemos apenas os event listeners para aceitar/rejeitar arquivos
+  // que serão adicionados dinamicamente aos itens da lista de usuários
+}
 
+// Função para armazenar arquivo para envio (exportada para uso em main.js)
 export function storeOutgoingFile(transferId, file, targetPeerId) {
   outgoingFiles.set(transferId, {
     file: file,
@@ -20,6 +26,7 @@ export function storeOutgoingFile(transferId, file, targetPeerId) {
   });
 }
 
+// Função para formatar tamanho do arquivo
 export function formatFileSize(bytes) {
   if (bytes < 1024) {
     return bytes + " B";
@@ -32,11 +39,13 @@ export function formatFileSize(bytes) {
   }
 }
 
+// Processar solicitação de transferência recebida
 export function handleFileTransferRequest(from, data) {
   if (!data || !data.fileInfo) return;
 
   const { id, name, size, type } = data.fileInfo;
 
+  // Armazenar informações do arquivo
   incomingFiles.set(id, {
     id,
     name,
@@ -50,23 +59,28 @@ export function handleFileTransferRequest(from, data) {
     completed: false,
   });
 
+  // Adicionar interface de aceitação/rejeição na lista de usuários
   addFileRequestToUserItem(from, id, name, size);
 }
 
+// Adicionar interface de solicitação de arquivo ao item do usuário na lista
 function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
+  // Encontrar o item do usuário na lista
   const userItem = [...UI.uList.children].find(
     (el) => el.dataset.peerId === peerId || el.textContent.includes(peerId)
   );
 
   if (!userItem) return;
 
+  // Criar contêiner para a solicitação de arquivo
   const fileRequestContainer = document.createElement("div");
   fileRequestContainer.className = "file-request-container";
   fileRequestContainer.dataset.transferId = transferId;
 
+  // Criar conteúdo do contêiner
   fileRequestContainer.innerHTML = `
     <div class="file-info">
-      <h4>Received file:</h4>
+      <h4>Arquivo recebido:</h4>
       <div class="file-details">
         <span class="file-name">${fileName}</span>
         <span class="file-size">(${formatFileSize(fileSize)})</span>
@@ -77,23 +91,26 @@ function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
         </div>
       </div>
       <div class="file-actions">
-        <button class="accept-file-btn secondary-btn">Accept</button>
-        <button class="reject-file-btn secondary-btn">Reject</button>
+        <button class="accept-file-btn secondary-btn">Aceitar</button>
+        <button class="reject-file-btn secondary-btn">Rejeitar</button>
       </div>
     </div>
   `;
 
+  // Adicionar event listeners aos botões
   const acceptBtn = fileRequestContainer.querySelector(".accept-file-btn");
   const rejectBtn = fileRequestContainer.querySelector(".reject-file-btn");
 
   acceptBtn.addEventListener("click", () => {
     acceptIncomingFile(transferId);
 
+    // Mostrar barra de progresso
     const progressContainer = fileRequestContainer.querySelector(
       ".file-progress-container"
     );
     progressContainer.removeAttribute("hidden");
 
+    // Esconder botões de ação
     const actionsContainer =
       fileRequestContainer.querySelector(".file-actions");
     actionsContainer.setAttribute("hidden", "true");
@@ -102,34 +119,42 @@ function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
   rejectBtn.addEventListener("click", () => {
     rejectIncomingFile(transferId);
 
+    // Remover contêiner da solicitação
     userItem.removeChild(fileRequestContainer);
   });
 
+  // Adicionar contêiner ao item do usuário
   userItem.appendChild(fileRequestContainer);
 }
 
+// Aceitar arquivo recebido
 function acceptIncomingFile(transferId) {
   const fileData = incomingFiles.get(transferId);
   if (!fileData) return;
 
+  // Enviar aceitação para o remetente
   sendToPeer(fileData.from, {
     type: "FILE_TRANSFER_ACCEPTED",
     transferId,
   });
 }
 
+// Rejeitar arquivo recebido
 function rejectIncomingFile(transferId) {
   const fileData = incomingFiles.get(transferId);
   if (!fileData) return;
 
+  // Enviar rejeição para o remetente
   sendToPeer(fileData.from, {
     type: "FILE_TRANSFER_REJECTED",
     transferId,
   });
 
+  // Remover arquivo da lista
   incomingFiles.delete(transferId);
 }
 
+// Processar aceitação de transferência de arquivo
 export function handleFileTransferAccepted(from, data) {
   if (!data || !data.transferId) return;
 
@@ -138,19 +163,24 @@ export function handleFileTransferAccepted(from, data) {
 
   if (!fileData) return;
 
+  // Iniciar envio de chunks
   sendNextChunk(transferId, from, 0);
 }
 
+// Processar rejeição de transferência de arquivo
 export function handleFileTransferRejected(from, data) {
   if (!data || !data.transferId) return;
 
   const transferId = data.transferId;
 
+  // Remover arquivo da lista de transferências
   outgoingFiles.delete(transferId);
 
-  alert(`The recipient rejected the file.`);
+  // Notificar o usuário
+  alert(`O destinatário rejeitou o arquivo.`);
 }
 
+// Enviar próximo chunk de dados
 function sendNextChunk(transferId, targetPeerId, chunkIndex) {
   const fileData = outgoingFiles.get(transferId);
   if (!fileData || fileData.canceled) return;
@@ -159,12 +189,15 @@ function sendNextChunk(transferId, targetPeerId, chunkIndex) {
   const start = chunkIndex * CHUNK_SIZE;
   const end = Math.min(start + CHUNK_SIZE, file.size);
 
+  // Verificar se já enviamos todos os chunks
   if (start >= file.size) {
+    // Envio completo, notificar conclusão
     sendToPeer(targetPeerId, {
       type: "FILE_TRANSFER_COMPLETE",
       transferId,
     });
 
+    // Remover após um breve intervalo
     setTimeout(() => {
       outgoingFiles.delete(transferId);
     }, 2000);
@@ -172,10 +205,12 @@ function sendNextChunk(transferId, targetPeerId, chunkIndex) {
     return;
   }
 
+  // Ler o próximo chunk do arquivo
   const reader = new FileReader();
   const blob = file.slice(start, end);
 
   reader.onload = function (e) {
+    // Converter para ArrayBuffer e enviar
     const chunk = e.target.result;
 
     sendToPeer(targetPeerId, {
@@ -185,9 +220,11 @@ function sendNextChunk(transferId, targetPeerId, chunkIndex) {
       chunk,
     });
 
+    // Atualizar progresso
     fileData.sentChunks++;
     fileData.progress = (fileData.sentChunks / fileData.totalChunks) * 100;
 
+    // Enviar próximo chunk após um pequeno delay para não sobrecarregar
     setTimeout(() => {
       sendNextChunk(transferId, targetPeerId, chunkIndex + 1);
     }, 10);
@@ -196,6 +233,7 @@ function sendNextChunk(transferId, targetPeerId, chunkIndex) {
   reader.readAsArrayBuffer(blob);
 }
 
+// Processar chunk de arquivo recebido
 export function handleFileChunk(from, data) {
   if (!data || !data.transferId || !data.chunk) return;
 
@@ -204,32 +242,40 @@ export function handleFileChunk(from, data) {
 
   if (!fileData) return;
 
+  // Armazenar chunk
   fileData.chunks[chunkIndex] = new Uint8Array(chunk);
   fileData.receivedChunks++;
 
+  // Atualizar progresso
   fileData.progress = (fileData.receivedChunks / fileData.totalChunks) * 100;
 
+  // Atualizar barra de progresso na interface
   updateFileTransferProgress(from, transferId, fileData.progress);
 }
 
+// Atualizar barra de progresso na interface
 function updateFileTransferProgress(peerId, transferId, progress) {
+  // Encontrar o item do usuário na lista
   const userItem = [...UI.uList.children].find(
     (el) => el.dataset.peerId === peerId || el.textContent.includes(peerId)
   );
 
   if (!userItem) return;
 
+  // Encontrar o contêiner da solicitação de arquivo
   const fileRequestContainer = userItem.querySelector(
     `.file-request-container[data-transfer-id="${transferId}"]`
   );
   if (!fileRequestContainer) return;
 
+  // Atualizar a barra de progresso
   const progressBar = fileRequestContainer.querySelector(".progress");
   if (progressBar) {
     progressBar.style.width = `${progress}%`;
   }
 }
 
+// Processar conclusão de transferência de arquivo
 export function handleFileTransferComplete(from, data) {
   if (!data || !data.transferId) return;
 
@@ -238,21 +284,28 @@ export function handleFileTransferComplete(from, data) {
 
   if (!fileData) return;
 
+  // Marcar como concluído
   fileData.completed = true;
 
+  // Combinar chunks em um único arquivo
   const fileBlob = combineChunks(fileData);
 
+  // Criar URL para download
   const downloadUrl = URL.createObjectURL(fileBlob);
 
+  // Adicionar mensagem com link para download
   displayFileDownloadMessage(fileData.name, downloadUrl, fileData.size, from);
 
+  // Remover o contêiner de solicitação de arquivo após um breve intervalo
   setTimeout(() => {
+    // Encontrar o item do usuário na lista
     const userItem = [...UI.uList.children].find(
       (el) => el.dataset.peerId === from || el.textContent.includes(from)
     );
 
     if (!userItem) return;
 
+    // Encontrar e remover o contêiner da solicitação de arquivo
     const fileRequestContainer = userItem.querySelector(
       `.file-request-container[data-transfer-id="${transferId}"]`
     );
@@ -262,12 +315,15 @@ export function handleFileTransferComplete(from, data) {
   }, 2000);
 }
 
+// Combinar chunks em um único arquivo
 function combineChunks(fileData) {
+  // Calcular tamanho total
   let totalLength = 0;
   fileData.chunks.forEach((chunk) => {
     if (chunk) totalLength += chunk.length;
   });
 
+  // Criar array combinado
   const combined = new Uint8Array(totalLength);
   let offset = 0;
 
@@ -278,15 +334,19 @@ function combineChunks(fileData) {
     }
   });
 
+  // Criar blob com o tipo correto
   return new Blob([combined], {
     type: fileData.type || "application/octet-stream",
   });
 }
 
+// Exibir mensagem com link para download
 function displayFileDownloadMessage(fileName, url, fileSize, from) {
+  // Determinar ícone com base no tipo de arquivo
   const fileExtension = fileName.split(".").pop().toLowerCase();
-  let fileIcon = "📄";
+  let fileIcon = "📄"; // Padrão para qualquer arquivo
 
+  // Escolher ícone baseado na extensão
   const iconMap = {
     pdf: "📕",
     doc: "📘",
@@ -310,6 +370,7 @@ function displayFileDownloadMessage(fileName, url, fileSize, from) {
     fileIcon = iconMap[fileExtension];
   }
 
+  // Criar HTML para a mensagem
   const fileMessage = `
     <div class="file-message">
       <span class="file-icon">${fileIcon}</span>
@@ -318,6 +379,7 @@ function displayFileDownloadMessage(fileName, url, fileSize, from) {
     </div>
   `;
 
+  // Adicionar à lista de mensagens
   const t = new Date().toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -329,6 +391,7 @@ function displayFileDownloadMessage(fileName, url, fileSize, from) {
   );
 }
 
+// Enviar mensagem para um peer específico
 function sendToPeer(peerId, data) {
   const conn = peerMod.getConnections().get(peerId);
   if (conn?.open) {

@@ -7,10 +7,11 @@ import * as audio from "./audio.js";
 import * as camera from "./camera.js";
 import * as screen from "./screen.js";
 import * as fileTransfer from "./file-transfer.js";
+import * as offline from "./offline.js";
 
-/* persistent status map */
 const statuses = new Map();
 const statusInput = document.querySelector("#statusInput");
+const inboxUrls = new Map();
 
 (async () => {
   await peerMod.ensurePeer();
@@ -21,6 +22,7 @@ const statusInput = document.querySelector("#statusInput");
 
   loadSaved();
   loadIdsFromUrl();
+  await checkInboxParam();
   renderUsers();
   bindEvents(myId);
   tr.startCountdown();
@@ -28,6 +30,7 @@ const statusInput = document.querySelector("#statusInput");
   setInterval(reconnectLoop, 5_000);
   setInterval(() => broadcastStatus(myId), 10_000);
   updateUrlWithIds();
+  await fetchOfflineMessages(myId);
 })();
 
 /* ---------- URL ID helpers ---------- */
@@ -63,14 +66,44 @@ function loadIdsFromUrl() {
   }
 }
 
+async function checkInboxParam() {
+  const inboxUrl = offline.checkInboxFromUrl();
+  if (inboxUrl) {
+    offline.saveInboxUrl(inboxUrl);
+    UI.inboxUrl.value = inboxUrl;
+  } else {
+    UI.inboxUrl.value = offline.getInboxUrl();
+  }
+  const inboxUrlToUse = inboxUrl || offline.getInboxUrl();
+  if (inboxUrlToUse) {
+    const myId = store.get("peerId");
+    try {
+      await offline.registerPeerIdWithInbox(inboxUrlToUse, myId);
+      console.log("ID registered in inbox during initialization");
+    } catch (error) {
+      console.error(
+        "Error registering ID in inbox during initialization:",
+        error
+      );
+    }
+  }
+}
+
 function updateUrlWithIds() {
   try {
     const userList = users();
     const myId = store.get("peerId");
+    if (userList.length === 0 && !window.location.search.includes("ids=")) {
+      return;
+    }
     const allIds = [myId, ...userList.filter((id) => id !== myId)];
     const idsString = allIds.join(",");
     const url = new URL(window.location);
+    const inboxParam = url.searchParams.get("inbox");
     url.searchParams.set("ids", idsString);
+    if (inboxParam) {
+      url.searchParams.set("inbox", inboxParam);
+    }
     window.history.replaceState({}, "", url);
   } catch (error) {
     console.error("Error updating URL with IDs:", error);
@@ -182,7 +215,7 @@ function renderUsers() {
 }
 function removeUser(id) {
   if (!id) return;
-  if (!confirm(`Remover usuário ${id} da lista?`)) return;
+  if (!confirm(`Remove user ${id} from list?`)) return;
   try {
     const userList = users();
     const index = userList.indexOf(id);
@@ -196,7 +229,7 @@ function removeUser(id) {
       renderUsers();
     }
   } catch (error) {
-    console.error("Erro ao remover usuário:", error);
+    console.error("Error removing user:", error);
   }
 }
 function updateConnDot(id, on) {
@@ -218,9 +251,18 @@ function bindEvents(myId) {
   UI.msg.addEventListener("keypress", (e) => e.key === "Enter" && onSend());
   UI.addBtn.addEventListener("click", addUser);
   UI.shareBtn?.addEventListener("click", shareLink);
+  UI.settingsBtn?.addEventListener("click", openSettingsModal);
+  UI.saveSettingsBtn?.addEventListener("click", saveSettings);
+  UI.closeModal?.addEventListener("click", closeSettingsModal);
+  UI.testInboxBtn?.addEventListener("click", testInboxConnection);
   UI.mic.addEventListener("change", audio.toggle);
   statusInput.addEventListener("input", () => broadcastStatus(myId));
 
+  window.addEventListener("click", (e) => {
+    if (e.target === UI.settingsModal) {
+      closeSettingsModal();
+    }
+  });
   makeIdEditable();
   camera.init();
   screen.init();
@@ -269,6 +311,13 @@ function bindEvents(myId) {
       }
       return;
     }
+    if (typeof data === "string" && data.startsWith("INBOX_URL:")) {
+      const inboxUrl = data.slice(10);
+      if (inboxUrl) {
+        inboxUrls.set(from, inboxUrl);
+      }
+      return;
+    }
     show(from, data);
   });
 
@@ -282,6 +331,7 @@ function bindEvents(myId) {
 
   peerMod.on("opened", ({ conn }) => {
     sendStatusTo(conn.peer);
+    sendInboxUrl(conn.peer);
     if (UI.camera.checked) {
       camera.shareVideoWithPeer(conn.peer);
     }
@@ -293,6 +343,83 @@ function bindEvents(myId) {
   peerMod.on("status", ({ id, online }) => updateConnDot(id, online));
 }
 
+function openSettingsModal() {
+  UI.inboxUrl.value = offline.getInboxUrl();
+  UI.settingsModal.style.display = "block";
+}
+function closeSettingsModal() {
+  UI.settingsModal.style.display = "none";
+}
+
+async function saveSettings() {
+  const inboxUrl = UI.inboxUrl.value.trim();
+  const previousUrl = offline.getInboxUrl();
+  const myId = store.get("peerId");
+  if (inboxUrl !== previousUrl) {
+    offline.saveInboxUrl(inboxUrl);
+    console.log("New inbox URL saved:", inboxUrl);
+    updateUrlWithIds();
+    if (inboxUrl) {
+      try {
+        console.log("Registering ID in new inbox:", myId);
+        const peers = await offline.registerPeerIdWithInbox(inboxUrl, myId);
+        console.log("Other users in the same inbox:", peers);
+        connectToInboxPeers(peers, myId);
+      } catch (error) {
+        console.error("Error registering ID in inbox:", error);
+        alert(
+          `Warning: The URL was saved, but there was an error registering your ID: ${error.message}`
+        );
+      }
+    }
+  }
+  broadcastInboxUrl();
+  closeSettingsModal();
+  alert("Settings saved successfully!");
+}
+function sendInboxUrl(peerId) {
+  const inboxUrl = offline.getInboxUrl();
+  if (inboxUrl) {
+    const conn = peerMod.getConnections().get(peerId);
+    if (conn?.open) {
+      conn.send(`INBOX_URL:${inboxUrl}`);
+    }
+  }
+}
+function broadcastInboxUrl() {
+  const inboxUrl = offline.getInboxUrl();
+  if (inboxUrl) {
+    for (const c of peerMod.getConnections().values()) {
+      if (c.open) {
+        c.send(`INBOX_URL:${inboxUrl}`);
+      }
+    }
+  }
+}
+async function fetchOfflineMessages(myId) {
+  const inboxUrl = offline.getInboxUrl();
+  if (!inboxUrl) return;
+
+  try {
+    const messages = await offline.fetchOfflineMessages(inboxUrl, myId);
+
+    if (messages && messages.length > 0) {
+      for (const msg of messages) {
+        if (msg.from && msg.message && msg.timestamp) {
+          const time = new Date(msg.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          await show(msg.from, msg.message, false, true);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching offline messages:", error);
+  }
+}
+
 function addUser() {
   const id = UI.pid.value.trim();
   if (!id || id === store.get("peerId")) return;
@@ -302,10 +429,85 @@ function addUser() {
     save(list);
     renderUsers();
     peerMod.connect(id);
+    const inboxUrl = offline.getInboxUrl();
+    if (inboxUrl) {
+      registerIdInInbox(id, inboxUrl);
+    }
   }
   UI.pid.value = "";
 }
 
+async function registerIdInInbox(id, inboxUrl) {
+  try {
+    const baseUrl = new URL(inboxUrl);
+    baseUrl.search = "";
+
+    const response = await fetch(baseUrl.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      console.warn(`Error fetching inbox data: ${response.status}`);
+      return;
+    }
+    const peers = [];
+    const messages = [];
+    try {
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        data.forEach((item) => {
+          if (typeof item === "string") {
+            peers.push(item);
+          } else if (item && typeof item === "object") {
+            if (item.to && item.from && item.message) {
+              messages.push(item);
+            }
+          }
+        });
+      } else if (data && typeof data === "object") {
+        if (Array.isArray(data.peers)) {
+          data.peers.forEach((peerId) => {
+            if (typeof peerId === "string") {
+              peers.push(peerId);
+            }
+          });
+        }
+
+        if (Array.isArray(data.messages)) {
+          messages.push(...data.messages);
+        }
+      }
+    } catch (e) {
+      console.error("Error processing inbox data:", e);
+      return;
+    }
+    if (!peers.includes(id)) {
+      peers.push(id);
+      console.log(`ID ${id} added to inbox`);
+    } else {
+      console.log(`ID ${id} already exists in inbox`);
+      return;
+    }
+    const updatedData = [...peers, ...messages];
+    const putResponse = await fetch(baseUrl.toString(), {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updatedData),
+    });
+
+    if (!putResponse.ok) {
+      console.warn(`Error updating inbox: ${putResponse.status}`);
+    } else {
+      console.log(`ID ${id} registered in inbox`);
+    }
+  } catch (error) {
+    console.error("Error registering ID in inbox:", error);
+  }
+}
 /* ---------- messaging ---------- */
 async function onSend() {
   const txt = UI.msg.value.trim();
@@ -318,10 +520,60 @@ async function onSend() {
   }
 
   if (!txt) return;
-  for (const c of peerMod.getConnections().values()) if (c.open) c.send(txt);
+  const connectedPeers = [...peerMod.getConnections().entries()]
+    .filter(([_, conn]) => conn.open)
+    .map(([id, _]) => id);
+  let messageSent = false;
+  if (connectedPeers.length > 0) {
+    for (const c of peerMod.getConnections().values()) {
+      if (c.open) {
+        c.send(txt);
+        messageSent = true;
+      }
+    }
+  }
+
+  const sentOffline = await tryOfflineMessages(txt);
+  messageSent = messageSent || sentOffline;
+  if (!messageSent && users().length > 0) {
+    alert(
+      "It was not possible to send messages. There are no connected users or inbox URLs configured."
+    );
+  }
   const out = UI.ai.checked ? await ai.answer(txt) : txt;
   await show("You", out);
   UI.msg.value = "";
+}
+
+async function tryOfflineMessages(txt) {
+  const myId = store.get("peerId");
+  const userList = users();
+  let sentToSomeone = false;
+  const defaultInboxUrl = offline.getInboxUrl();
+  for (const userId of userList) {
+    const isConnected = peerMod.getConnections().get(userId)?.open;
+    if (isConnected) continue;
+    const userInboxUrl = inboxUrls.get(userId) || defaultInboxUrl;
+    if (userInboxUrl) {
+      console.log(`Sending offline message to ${userId} via ${userInboxUrl}`);
+      const success = await offline.sendOfflineMessage(
+        userId,
+        myId,
+        userInboxUrl,
+        txt
+      );
+      if (success) {
+        sentToSomeone = true;
+        await show(`You → ${userId} (offline)`, txt);
+      }
+    }
+  }
+  if (userList.length > 0 && !sentToSomeone) {
+    alert(
+      "It was not possible to send offline messages. Check if the inbox URLs are configured correctly."
+    );
+  }
+  return sentToSomeone;
 }
 
 function sendFile(file) {
@@ -341,7 +593,7 @@ function sendFile(file) {
   } else {
     const userList = activeConnections.map(([id, _]) => id);
     const selectedIndex = prompt(
-      `Select the recipient (1-${userList.length}):\n` +
+      `Selecione o destinatário (1-${userList.length}):\n` +
         userList.map((id, index) => `${index + 1}. ${id}`).join("\n")
     );
 
@@ -364,14 +616,11 @@ function sendFile(file) {
     type: file.type,
     size: file.size,
   };
-
   fileTransfer.storeOutgoingFile(transferId, file, targetPeerId);
-
   sendToPeer(targetPeerId, {
     type: "FILE_TRANSFER_REQUEST",
     fileInfo,
   });
-
   alert(`File transfer request sent to ${targetPeerId}`);
 }
 
@@ -388,7 +637,7 @@ function sendToPeer(peerId, data) {
   return false;
 }
 
-async function show(sender, txt, skip = false) {
+async function show(sender, txt, skip = false, isOffline = false) {
   txt = await tr.maybeTranslate(txt);
   if (UI.msgs.firstElementChild?.textContent.startsWith("No"))
     UI.msgs.innerHTML = "";
@@ -396,11 +645,12 @@ async function show(sender, txt, skip = false) {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const offlineIcon = isOffline ? "📬 " : "";
   UI.msgs.insertAdjacentHTML(
     "afterbegin",
-    `<li><small>[${t}]</small> <strong>${sender}:</strong> <span>${txt}</span></li>`
+    `<li><small>[${t}]</small> <strong>${offlineIcon}${sender}:</strong> <span>${txt}</span></li>`
   );
-  if (!skip) saveMsg({ sender, text: txt, time: Date.now() });
+  if (!skip) saveMsg({ sender, text: txt, time: Date.now(), isOffline });
 }
 
 /* ---------- persistence ---------- */
@@ -410,7 +660,9 @@ function saveMsg(m) {
   store.set("messages", arr);
 }
 function loadSaved() {
-  for (const m of store.get("messages", [])) show(m.sender, m.text, true);
+  for (const m of store.get("messages", [])) {
+    show(m.sender, m.text, true, m.isOffline);
+  }
 }
 
 /* ---------- reconnect loop ---------- */
@@ -470,12 +722,12 @@ function makeIdEditable() {
           updateUrlWithIds();
         } else {
           idElement.textContent = currentId;
-          alert(`Error changing ID: ${result.error}`);
+          alert(`Erro ao alterar ID: ${result.error}`);
         }
       } catch (error) {
-        console.error("Error while changing ID:", error);
+        console.error("Erro ao alterar ID:", error);
         idElement.textContent = currentId;
-        alert("Error while changing ID.");
+        alert("Erro ao alterar ID.");
       } finally {
         if (idElement.querySelector(".loading-indicator")) {
           idElement.removeChild(idElement.querySelector(".loading-indicator"));
@@ -512,6 +764,10 @@ function handlePeerIdChange(oldId, newId) {
     if (oldStatus) {
       statuses.delete(oldId);
       setStatus(newId, oldStatus);
+    }
+    if (inboxUrls.has(oldId)) {
+      inboxUrls.set(newId, inboxUrls.get(oldId));
+      inboxUrls.delete(oldId);
     }
   }
 }
@@ -556,7 +812,7 @@ function shareLink() {
         url: shareUrl,
       })
       .catch((err) => {
-        console.error("Error sharing:", err);
+        console.error("Erro ao compartilhar:", err);
         fallbackShare(shareUrl);
       });
   } else {
@@ -590,8 +846,42 @@ function promptManualCopy(url) {
     document.execCommand("copy");
     alert("Link copied to clipboard!");
   } catch (err) {
-    alert(`Copy the following link: ${url}`);
+    alert(`Copy this link manually: ${url}`);
   }
 
   document.body.removeChild(textarea);
+}
+
+async function testInboxConnection() {
+  const inboxUrl = UI.inboxUrl.value.trim();
+  if (!inboxUrl) {
+    alert("Please enter a valid inbox URL to test.");
+    return;
+  }
+  const testButton = UI.testInboxBtn;
+  const originalText = testButton.textContent;
+  testButton.textContent = "Testing...";
+  testButton.disabled = true;
+  try {
+    const result = await offline.testInboxConnection(inboxUrl);
+    if (result.success) {
+      alert(
+        `✅ Successfully connected!\n\nThe inbox is working correctly and you have access to ${
+          result.details.write ? "read and write" : "read only"
+        }.`
+      );
+    } else {
+      alert(
+        `❌ Error connecting to inbox: ${result.error}\n\n${
+          result.details || ""
+        }`
+      );
+    }
+  } catch (error) {
+    console.error("Error testing inbox connection:", error);
+    alert(`❌ Error testing connection: ${error.message}`);
+  } finally {
+    testButton.textContent = originalText;
+    testButton.disabled = false;
+  }
 }

@@ -14,9 +14,17 @@
   <body>
     <main>
       <h1 class="logo">LS</h1>
-      <h2 class="id-container">
-        Your ID: <span id="yourPeerId" class="editable-id" tabindex="0"></span>
-      </h2>
+      <div class="peerId">
+        <h2 class="id-container">
+          Your ID:
+          <span id="yourPeerId" class="editable-id" tabindex="0"></span>
+        </h2>
+        <div class="button-row">
+          <button id="settingsBtn" class="icon-button" title="Configurações">
+            ⚙️
+          </button>
+        </div>
+      </div>
       <label for="peerIdInput">Other user ID:</label>
       <input id="peerIdInput" placeholder="Peer ID" />
       <button id="addUserBtn">Add to list</button>
@@ -55,6 +63,13 @@
       <div id="screenContainer" hidden>
         <video id="screenVideo" autoplay muted playsinline></video>
       </div>
+      <div id="fileInfo" hidden>
+        <div class="file-info">
+          <h3>Selected file:</h3>
+          <span id="fileName"></span>
+          <span id="fileSize"></span>
+        </div>
+      </div>
       <h2>User list:</h2>
       <ul id="userList">
         <li>No users added.</li>
@@ -65,6 +80,34 @@
       </ul>
       <audio id="remoteAudio" autoplay></audio>
     </main>
+    <div id="settingsModal" class="modal">
+      <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Settings</h2>
+        <button id="shareBtn" class="secondary-btn" title="Compartilhar link">
+          🔗 Share link
+        </button>
+        <div class="form-group">
+          <label for="inboxUrl">Inbox URL (for offline messages):</label>
+          <input
+            type="url"
+            id="inboxUrl"
+            placeholder="https://jsonblob.com/api/jsonBlob/[ID]"
+          />
+          <button id="testInboxBtn" class="secondary-btn">Test access</button>
+          <p class="help-text">
+            This URL will be used to receive messages when you are offline.
+          </p>
+          <p class="help-text">
+            For services like
+            <a target="_blank" href="https://jsonblob.com/">JSONBlob</a>, create
+            a blob with content <code>[]</code> (empty array) and use the API
+            URL (https://jsonblob.com/api/jsonBlob/...).
+          </p>
+        </div>
+        <button id="saveSettingsBtn" class="primary-btn">Save</button>
+      </div>
+    </div>
     <script type="module" src="src/main.js"></script>
   </body>
 </html>

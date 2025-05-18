@@ -25,6 +25,7 @@ export const UI = {
   sendBtn: $("#sendButton"),
   addBtn: $("#addUserBtn"),
   shareBtn: $("#shareBtn"),
+  settingsBtn: $("#settingsBtn"),
   uList: $("#userList"),
   msgs: $("#receivedMessages"),
   audio: $("#remoteAudio"),
@@ -35,22 +36,11 @@ export const UI = {
   fileInfo: $("#fileInfo"),
   fileName: $("#fileName"),
   fileSize: $("#fileSize"),
-  sendFileBtn: $("#sendFileBtn"),
-  cancelFileBtn: $("#cancelFileBtn"),
 
-  // Incoming file elements
-  incomingFileContainer: $("#incomingFileContainer"),
-  incomingFileName: $("#incomingFileName"),
-  incomingFileSize: $("#incomingFileSize"),
-  incomingFileProgress: $("#incomingFileProgress"),
-  incomingFileProgressBar: $("#incomingFileProgressBar"),
-  acceptFileBtn: $("#acceptFileBtn"),
-  rejectFileBtn: $("#rejectFileBtn"),
-
-  // Outgoing file elements
-  outgoingFileContainer: $("#outgoingFileContainer"),
-  outgoingFileName: $("#outgoingFileName"),
-  outgoingFileSize: $("#outgoingFileSize"),
-  outgoingFileProgress: $("#outgoingFileProgress"),
-  outgoingFileProgressBar: $("#outgoingFileProgressBar"),
+  // Settings modal elements
+  settingsModal: $("#settingsModal"),
+  inboxUrl: $("#inboxUrl"),
+  saveSettingsBtn: $("#saveSettingsBtn"),
+  testInboxBtn: $("#testInboxBtn"),
+  closeModal: $(".close-modal"),
 };
