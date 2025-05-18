@@ -18,6 +18,7 @@ export function storeOutgoingFile(transferId, file, targetPeerId) {
     totalChunks: Math.ceil(file.size / CHUNK_SIZE),
     canceled: false,
   });
+  displayOutgoingFilePreview(transferId, file, targetPeerId);
 }
 
 export function formatFileSize(bytes) {
@@ -63,10 +64,21 @@ function addFileRequestToUserItem(peerId, transferId, fileName, fileSize) {
   const fileRequestContainer = document.createElement("div");
   fileRequestContainer.className = "file-request-container";
   fileRequestContainer.dataset.transferId = transferId;
-
+  const fileExtension = fileName.split(".").pop().toLowerCase();
+  const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(
+    fileExtension
+  );
+  const filePreview = isImage
+    ? `<div class="file-preview">
+      <div class="image-placeholder">
+        <span>🖼️</span>
+      </div>
+    </div>`
+    : "";
   fileRequestContainer.innerHTML = `
     <div class="file-info">
       <h4>File received:</h4>
+      ${filePreview}
       <div class="file-details">
         <span class="file-name">${fileName}</span>
         <span class="file-size">(${formatFileSize(fileSize)})</span>
@@ -241,9 +253,14 @@ export function handleFileTransferComplete(from, data) {
   fileData.completed = true;
 
   const fileBlob = combineChunks(fileData);
-
   const downloadUrl = URL.createObjectURL(fileBlob);
-
+  const fileExtension = fileData.name.split(".").pop().toLowerCase();
+  const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(
+    fileExtension
+  );
+  if (isImage) {
+    updateImagePreview(from, transferId, downloadUrl);
+  }
   displayFileDownloadMessage(fileData.name, downloadUrl, fileData.size, from);
 
   setTimeout(() => {
@@ -260,6 +277,20 @@ export function handleFileTransferComplete(from, data) {
       userItem.removeChild(fileRequestContainer);
     }
   }, 2000);
+}
+function updateImagePreview(peerId, transferId, imageUrl) {
+  const userItem = [...UI.uList.children].find(
+    (el) => el.dataset.peerId === peerId || el.textContent.includes(peerId)
+  );
+  if (!userItem) return;
+  const fileRequestContainer = userItem.querySelector(
+    `.file-request-container[data-transfer-id="${transferId}"]`
+  );
+  if (!fileRequestContainer) return;
+  const previewContainer = fileRequestContainer.querySelector(".file-preview");
+  if (previewContainer) {
+    previewContainer.innerHTML = `<img src="${imageUrl}" alt="Preview" class="image-preview">`;
+  }
 }
 
 function combineChunks(fileData) {
@@ -309,12 +340,20 @@ function displayFileDownloadMessage(fileName, url, fileSize, from) {
   if (iconMap[fileExtension]) {
     fileIcon = iconMap[fileExtension];
   }
+  const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(
+    fileExtension
+  );
+  let imagePreview = "";
 
+  if (isImage) {
+    imagePreview = `<div class="chat-image-preview"><img src="${url}" alt="Preview" class="chat-image"></div>`;
+  }
   const fileMessage = `
     <div class="file-message">
       <span class="file-icon">${fileIcon}</span>
       <a href="${url}" class="file-download-link" download="${fileName}">${fileName}</a>
       <span class="file-size">(${formatFileSize(fileSize)})</span>
+      ${imagePreview}
     </div>
   `;
 
@@ -336,4 +375,100 @@ function sendToPeer(peerId, data) {
     return true;
   }
   return false;
+}
+
+function displayOutgoingFilePreview(transferId, file, targetPeerId) {
+  const fileExtension = file.name.split(".").pop().toLowerCase();
+  const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(
+    fileExtension
+  );
+
+  const imageUrl = isImage ? URL.createObjectURL(file) : "";
+
+  let fileIcon = "📄";
+  const iconMap = {
+    pdf: "📕",
+    doc: "📘",
+    docx: "📘",
+    xls: "📗",
+    xlsx: "📗",
+    jpg: "🖼️",
+    jpeg: "🖼️",
+    png: "🖼️",
+    gif: "🖼️",
+    mp3: "🎵",
+    wav: "🎵",
+    mp4: "🎬",
+    avi: "🎬",
+    mov: "🎬",
+    zip: "🗜️",
+    rar: "🗜️",
+  };
+
+  if (iconMap[fileExtension]) {
+    fileIcon = iconMap[fileExtension];
+  }
+
+  const userItem = [...UI.uList.children].find(
+    (el) =>
+      el.dataset.peerId === targetPeerId ||
+      el.textContent.includes(targetPeerId)
+  );
+
+  if (!userItem) return;
+
+  const previewContainer = document.createElement("div");
+  previewContainer.className = "outgoing-file-container";
+  previewContainer.dataset.transferId = transferId;
+
+  const previewContent = isImage
+    ? `<div class="file-preview">
+      <img src="${imageUrl}" alt="Preview" class="image-preview">
+    </div>`
+    : `<div class="file-icon-preview">
+      <span class="large-file-icon">${fileIcon}</span>
+    </div>`;
+
+  previewContainer.innerHTML = `
+    <div class="file-info">
+      <h4>Sending file:</h4>
+      ${previewContent}
+      <div class="file-details">
+        <span class="file-name">${file.name}</span>
+        <span class="file-size">(${formatFileSize(file.size)})</span>
+      </div>
+      <div class="file-progress-container">
+        <div class="progress-bar">
+          <div class="progress" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  userItem.appendChild(previewContainer);
+
+  const fileData = outgoingFiles.get(transferId);
+
+  if (fileData) {
+    const updateProgress = setInterval(() => {
+      if (!outgoingFiles.has(transferId)) {
+        clearInterval(updateProgress);
+
+        setTimeout(() => {
+          if (previewContainer.parentNode) {
+            previewContainer.parentNode.removeChild(previewContainer);
+          }
+        }, 2000);
+
+        return;
+      }
+
+      const progress = fileData.progress;
+      const progressBar = previewContainer.querySelector(".progress");
+
+      if (progressBar) {
+        progressBar.style.width = `${progress}%`;
+      }
+    }, 100);
+  }
 }
